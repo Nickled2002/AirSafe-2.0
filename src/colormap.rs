@@ -5,6 +5,7 @@ pub fn color_interp(colormap_name: &str, min:f32, max:f32, mut t:f32) -> [f32; 3
     }
     if t > max {
         t = max;
+
     }
     let tn = (t-min)/(max - min);
     let colors = colormap_data(colormap_name);
