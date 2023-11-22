@@ -12,6 +12,7 @@ mod vertex_data;
 mod transforms;
 
 const IS_PERSPECTIVE:bool = true;
+const ANIMATION_SPEED:f32 = 1.0;//add animation to the cube also change update function around line 200
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, Pod, Zeroable)]
@@ -194,7 +195,15 @@ impl State {
         false
     }
 
-    fn update(&mut self) {}
+    fn update(&mut self, dt: std::time::Duration) {//dt time duration as input argument
+        // update uniform buffer
+        let dt = ANIMATION_SPEED * dt.as_secs_f32();//scale dt with animation speed
+        let model_mat = transforms::create_transforms([0.0,0.0,0.0], [dt.sin(), dt.cos(), 0.0], [1.0, 1.0, 1.0]);//creates the model matrix we use a new rotaion vector
+        let mvp_mat = self.project_mat * self.view_mat * model_mat;
+        let mvp_ref:&[f32; 16] = mvp_mat.as_ref();
+        self.init.queue.write_buffer(&self.uniform_buffer, 0, bytemuck::cast_slice(mvp_ref));//also update the uniform buffer
+        //final change main 275
+    }
 
     fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
         //let output = self.init.surface.get_current_frame()?.output;
@@ -271,6 +280,8 @@ fn main() {//same main function as last example
     window.set_title(&*format!("{}", "cube with distinct face colors"));
     let mut state = pollster::block_on(State::new(&window));
 
+    let start_time = std::time::Instant::now();//start time for animation and request render 315
+
     event_loop.run(move |event, _, control_flow| {
         match event {
             Event::WindowEvent {
@@ -300,7 +311,10 @@ fn main() {//same main function as last example
                 }
             }
             Event::RedrawRequested(_) => {
-                state.update();
+                let now = std::time::Instant::now();
+                let dt = now - start_time;//we add this to define duration function
+                state.update(dt);//call the update function
+
                 match state.render() {
                     Ok(_) => {}
                     Err(wgpu::SurfaceError::Lost) => state.resize(state.init.size),
