@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 use cgmath::*;
 mod colormap;
-//tp make code more efficient can combine the all the methods into one only requireing two for loops
+// code more efficient only requiring two for loops
 pub fn simple_surface_colors(pts: &Vec<Vec<[f32; 3]>>, nx:usize, nz: usize, yrange:[f32; 2], colormap_name: &str) -> Vec<[f32; 3]> {
     let mut colors: Vec<[f32; 3]> = Vec::with_capacity((4* (nx - 1)*(nz -1)) as usize);
     for i in 0..nx - 1 {
