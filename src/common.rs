@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use std:: {iter, mem };
 use cgmath::{ Matrix, Matrix4, SquareMatrix };
 use wgpu::util::DeviceExt;
@@ -7,53 +8,67 @@ use winit::{
     event_loop::{ControlFlow, EventLoop},
 };
 use bytemuck:: {Pod, Zeroable, cast_slice};
-
-#[path="../src/transforms.rs"]
+#[path="transforms.rs"]
 mod transforms;
+#[path="surface_data.rs"]
+mod surface;
 
-const ANIMATION_SPEED:f32 = 1.0;
+const ANIMATION_SPEED:f32 = 1.0;//changes if and how fast it rotates
 const IS_PERSPECTIVE:bool = true;
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, Pod, Zeroable)]
-pub struct Light {//light structure contains fields for light calculations
-    color: [f32; 4],
+pub struct Light {
     specular_color : [f32; 4],
     ambient_intensity: f32,
     diffuse_intensity :f32,
     specular_intensity: f32,
     specular_shininess: f32,
+    is_two_side: i32,
 }
 
-pub fn light(c:[f32; 3], sc:[f32;3], ai: f32, di: f32, si: f32, ss: f32) -> Light {//color specular color converted to f32;4
+pub fn light(sc:[f32;3], ambient: f32, diffuse: f32, specular: f32, shininess: f32, two_side: i32) -> Light {
     Light {
-        color:[c[0], c[1], c[2], 1.0],
         specular_color: [sc[0], sc[1], sc[2], 1.0],
-        ambient_intensity: ai,
-        diffuse_intensity: di,
-        specular_intensity: si,
-        specular_shininess: ss,
+        ambient_intensity: ambient,
+        diffuse_intensity: diffuse,
+        specular_intensity: specular,
+        specular_shininess: shininess,
+        is_two_side: two_side,
     }
 }
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, Pod, Zeroable)]
-//vertex structure two components pos and normal
 pub struct Vertex {
     pub position: [f32; 4],
     pub normal: [f32; 4],
+    pub color: [f32; 4],
 }
 
-#[allow(dead_code)]
-pub fn vertex(p:[f32;3], n:[f32; 3]) -> Vertex {
+pub fn vertex(p:[f32;3], n:[f32; 3], c:[f32; 3]) -> Vertex {
     Vertex {
         position: [p[0], p[1], p[2], 1.0],
         normal: [n[0], n[1], n[2], 1.0],
+        color: [c[0], c[1], c[2], 1.0],
     }
 }
 
+pub fn create_vertices(f: &dyn Fn(f32, f32) ->[f32;3], colormap_name: &str, xmin:f32, xmax:f32, zmin:f32, zmax:f32,
+                       nx:usize, nz:usize, scale:f32, aspect:f32) -> Vec<Vertex> {
+    let (pts, yrange) = surface::simple_surface_points(f, xmin, xmax, zmin, zmax, nx, nz, scale, aspect);
+    let pos = surface::simple_surface_positions(&pts, nx, nz);
+    let normal = surface::simple_surface_normals(&pts, nx, nz);
+    let color = surface::simple_surface_colors(&pts, nx, nz, yrange, colormap_name);
+    let mut data:Vec<Vertex> = Vec::with_capacity(pos.len());
+    for i in 0..pos.len() {
+        data.push(vertex(pos[i], normal[i], color[i]));
+    }
+    data.to_vec()
+}
+
 impl Vertex {
-    const ATTRIBUTES: [wgpu::VertexAttribute; 2] = wgpu::vertex_attr_array![0=>Float32x4, 1=>Float32x4];
+    const ATTRIBUTES: [wgpu::VertexAttribute; 3] = wgpu::vertex_attr_array![0=>Float32x4, 1=>Float32x4, 2=>Float32x4];
     fn desc<'a>() -> wgpu::VertexBufferLayout<'a> {
         wgpu::VertexBufferLayout {
             array_stride: mem::size_of::<Vertex>() as wgpu::BufferAddress,
@@ -63,8 +78,8 @@ impl Vertex {
     }
 }
 
-struct State {//pack all fields to draw all graphics shape
-    init: transforms::InitWgpu,
+pub struct State {
+    pub init: transforms::InitWgpu,
     pipeline: wgpu::RenderPipeline,
     vertex_buffer: wgpu::Buffer,
     uniform_bind_group:wgpu::BindGroup,
@@ -75,7 +90,7 @@ struct State {//pack all fields to draw all graphics shape
 }
 
 impl State {
-    async fn new(window: &Window, vertex_data: &Vec<Vertex>, light_data: Light) -> Self {//using state struct and vertex data and light data we provided
+    pub async fn new(window: &Window, vertex_data: &Vec<Vertex>, light_data: Light) -> Self {
         let init =  transforms::InitWgpu::init_wgpu(window).await;
 
         let shader = init.device.create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -85,24 +100,25 @@ impl State {
         });
 
         // uniform data
-        let camera_position = (3.0, 1.5, 3.0).into();
+        let camera_position = (3.5, 1.75, 3.5).into();
         let look_direction = (0.0,0.0,0.0).into();
         let up_direction = cgmath::Vector3::unit_y();
-        //create a view and projection matrix
-        let (view_mat, project_mat, _) = transforms::create_view_projection(camera_position, look_direction, up_direction,
-                                                                            init.config.width as f32 / init.config.height as f32, IS_PERSPECTIVE);
+
+        let (view_mat, project_mat, _view_project_mat) =
+            transforms::create_view_projection(camera_position, look_direction, up_direction,
+                                               init.config.width as f32 / init.config.height as f32, IS_PERSPECTIVE);
 
         // create vertex uniform buffer
         // model_mat and view_projection_mat will be stored in vertex_uniform_buffer inside the update function
-        let vertex_uniform_buffer = init.device.create_buffer(&wgpu::BufferDescriptor{//allows to set buffer size and offset
+        let vertex_uniform_buffer = init.device.create_buffer(&wgpu::BufferDescriptor{
             label: Some("Vertex Uniform Buffer"),
-            size: 192,//store 3 4x4 matrix (model, view projection and normal) each matrix needs 64 bytes of memory to store data 3x64=192
+            size: 192,
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
 
         // create fragment uniform buffer. here we set eye_position = camera_position and light_position = eye_position
-        let fragment_uniform_buffer = init.device.create_buffer(&wgpu::BufferDescriptor{//stores light position and eye position both dont change with roation
+        let fragment_uniform_buffer = init.device.create_buffer(&wgpu::BufferDescriptor{
             label: Some("Fragment Uniform Buffer"),
             size: 32,
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
@@ -112,9 +128,8 @@ impl State {
         // store light and eye positions
         let light_position:&[f32; 3] = camera_position.as_ref();
         let eye_position:&[f32; 3] = camera_position.as_ref();
-        init.queue.write_buffer(&fragment_uniform_buffer, 0, bytemuck::cast_slice(light_position));//so can store immediately after creating the buffer
-        init.queue.write_buffer(&fragment_uniform_buffer, 16, bytemuck::cast_slice(eye_position)); //so its written herer not inside the update function
-        //for airsafe eye position will change but not light position maybe
+        init.queue.write_buffer(&fragment_uniform_buffer, 0, bytemuck::cast_slice(light_position));
+        init.queue.write_buffer(&fragment_uniform_buffer, 16, bytemuck::cast_slice(eye_position));
 
         // create light uniform buffer
         let light_uniform_buffer = init.device.create_buffer(&wgpu::BufferDescriptor{
@@ -125,13 +140,13 @@ impl State {
         });
 
         // store light parameters
-        init.queue.write_buffer(&light_uniform_buffer, 0, bytemuck::cast_slice(&[light_data]));//also doesnt change with animation
+        init.queue.write_buffer(&light_uniform_buffer, 0, bytemuck::cast_slice(&[light_data]));
 
         let uniform_bind_group_layout = init.device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor{
             entries: &[
-                wgpu::BindGroupLayoutEntry {//bind to positions
+                wgpu::BindGroupLayoutEntry {
                     binding: 0,
-                    visibility: wgpu::ShaderStages::VERTEX,//vertex uniform buffer at 0
+                    visibility: wgpu::ShaderStages::VERTEX,
                     ty: wgpu::BindingType::Buffer {
                         ty: wgpu::BufferBindingType::Uniform,
                         has_dynamic_offset: false,
@@ -141,7 +156,7 @@ impl State {
                 },
                 wgpu::BindGroupLayoutEntry {
                     binding: 1,
-                    visibility: wgpu::ShaderStages::FRAGMENT,//fragment up at 1
+                    visibility: wgpu::ShaderStages::FRAGMENT,
                     ty: wgpu::BindingType::Buffer {
                         ty: wgpu::BufferBindingType::Uniform,
                         has_dynamic_offset: false,
@@ -151,7 +166,7 @@ impl State {
                 },
                 wgpu::BindGroupLayoutEntry {
                     binding: 2,
-                    visibility: wgpu::ShaderStages::FRAGMENT,//light ub at 2
+                    visibility: wgpu::ShaderStages::FRAGMENT,
                     ty: wgpu::BindingType::Buffer {
                         ty: wgpu::BufferBindingType::Uniform,
                         has_dynamic_offset: false,
@@ -168,7 +183,7 @@ impl State {
             entries: &[
                 wgpu::BindGroupEntry {
                     binding: 0,
-                    resource: vertex_uniform_buffer.as_entire_binding(),//same as binding group
+                    resource: vertex_uniform_buffer.as_entire_binding(),
                 },
                 wgpu::BindGroupEntry {
                     binding: 1,
@@ -210,7 +225,6 @@ impl State {
             }),
             primitive: wgpu::PrimitiveState{
                 topology: wgpu::PrimitiveTopology::TriangleList,
-                cull_mode: Some(wgpu::Face::Back),
                 ..Default::default()
             },
             //depth_stencil: None,
@@ -222,7 +236,7 @@ impl State {
                 bias: wgpu::DepthBiasState::default(),
             }),
             multisample: wgpu::MultisampleState::default(),
-            multiview: None
+            multiview: None,
         });
 
         let vertex_buffer = init.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -244,7 +258,7 @@ impl State {
         }
     }
 
-    fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) {
+    pub fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) {
         if new_size.width > 0 && new_size.height > 0 {
             self.init.instance.poll_all(true);
             self.init.size = new_size;
@@ -256,29 +270,28 @@ impl State {
     }
 
     #[allow(unused_variables)]
-    fn input(&mut self, event: &WindowEvent) -> bool {
+    pub fn input(&mut self, event: &WindowEvent) -> bool {
         false
     }
 
-    fn update(&mut self, dt: std::time::Duration) {
+    pub fn update(&mut self, dt: std::time::Duration) {
         // update uniform buffer
         let dt = ANIMATION_SPEED * dt.as_secs_f32();
-        let model_mat = transforms::create_transforms([0.0,0.0,0.0], [dt.sin(), dt.cos(), 0.0], [1.0, 1.0, 1.0]);//define rotation like cube go weee
+        let model_mat = transforms::create_transforms([0.0,0.0,0.0], [dt.sin(), dt.cos(), 0.0], [1.0, 1.0, 1.0]);
         let view_project_mat = self.project_mat * self.view_mat;
 
-        let normal_mat = (model_mat.invert().unwrap()).transpose();//create normal marix inert of the model matrix
+        let normal_mat = (model_mat.invert().unwrap()).transpose();
 
         let model_ref:&[f32; 16] = model_mat.as_ref();
         let view_projection_ref:&[f32; 16] = view_project_mat.as_ref();
         let normal_ref:&[f32; 16] = normal_mat.as_ref();
 
-        self.init.queue.write_buffer(&self.vertex_uniform_buffer, 0, bytemuck::cast_slice(model_ref));//write offset of 0 for model matrix
-        self.init.queue.write_buffer(&self.vertex_uniform_buffer, 64, bytemuck::cast_slice(view_projection_ref));//offset of 64 for view projection matrix
-        self.init.queue.write_buffer(&self.vertex_uniform_buffer, 128, bytemuck::cast_slice(normal_ref));//normal matrix 128 offset
-
+        self.init.queue.write_buffer(&self.vertex_uniform_buffer, 0, bytemuck::cast_slice(model_ref));
+        self.init.queue.write_buffer(&self.vertex_uniform_buffer, 64, bytemuck::cast_slice(view_projection_ref));
+        self.init.queue.write_buffer(&self.vertex_uniform_buffer, 128, bytemuck::cast_slice(normal_ref));
     }
 
-    fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
+    pub fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
         //let output = self.init.surface.get_current_frame()?.output;
         let output = self.init.surface.get_current_texture()?;
         let view = output
@@ -347,12 +360,11 @@ impl State {
     }
 }
 
-// to avoid code duplication also convert the content in main in a run function
-pub fn run(vertex_data: &Vec<Vertex>, light_data: Light, title: &str) {
+pub fn run(vertex_data: &Vec<Vertex>, light_data: Light, colormap_name: &str, title: &str) {
     env_logger::init();
     let event_loop = EventLoop::new();
     let window = winit::window::WindowBuilder::new().build(&event_loop).unwrap();
-    window.set_title(title);
+    window.set_title(&*format!("ch09_{}: {}", title, colormap_name));
 
     let mut state = pollster::block_on(State::new(&window, &vertex_data, light_data));
     let render_start_time = std::time::Instant::now();

@@ -2,16 +2,19 @@
 use std::f32::consts::PI;
 use winit::window::Window;
 use cgmath::*;
-
+//git not working
 #[rustfmt::skip]
 #[allow(unused)]
 pub const OPENGL_TO_WGPU_MATRIX: Matrix4<f32> = Matrix4::new(
+    //constant matrix opengl to wgpu based on directx and metal coordinate system
+    //but cgmath s built for opengl so we need to add the z component
+    //so convert from opengl to WGPU
     1.0, 0.0, 0.0, 0.0,
     0.0, 1.0, 0.0, 0.0,
     0.0, 0.0, 0.5, 0.0,
     0.0, 0.0, 0.5, 1.0,
 );
-pub struct InitWgpu {
+pub struct InitWgpu {//wgpu initialisation related code
     pub instance: wgpu::Instance,
     pub surface: wgpu::Surface,
     pub device: wgpu::Device,
@@ -21,7 +24,7 @@ pub struct InitWgpu {
 }
 
 impl InitWgpu {
-    pub async fn init_wgpu(window: &Window) -> Self {
+    pub async fn init_wgpu(window: &Window) -> Self {//initialise wgpu can be used in other applications
         let size = window.inner_size();
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
             backends: wgpu::Backends::DX12,
@@ -87,6 +90,27 @@ pub fn create_projection(aspect:f32, is_perspective:bool) -> Matrix4<f32> {
     project_mat
 }
 
+pub fn create_view_projection(camera_position: Point3<f32>, look_direction: Point3<f32>, up_direction: Vector3<f32>,
+                              aspect:f32, is_perspective:bool) -> (Matrix4<f32>, Matrix4<f32>, Matrix4<f32>) {
+
+    // construct view matrix
+    let view_mat = Matrix4::look_at_rh(camera_position, look_direction, up_direction);
+
+    // construct projection matrix
+    let project_mat:Matrix4<f32>;
+    if is_perspective {
+        project_mat = OPENGL_TO_WGPU_MATRIX * perspective(Rad(2.0*PI/5.0), aspect, 0.1, 100.0);
+    } else {
+        project_mat = OPENGL_TO_WGPU_MATRIX * ortho(-4.0, 4.0, -3.0, 3.0, -1.0, 6.0);
+    }
+
+    // contruct view-projection matrix
+    let view_project_mat = project_mat * view_mat;
+
+    // return various matrices
+    (view_mat, project_mat, view_project_mat)
+}
+
 pub fn create_perspective_projection(fovy:Rad<f32>, aspect:f32, near: f32, far:f32) -> Matrix4<f32> {
     OPENGL_TO_WGPU_MATRIX * perspective(fovy, aspect, near, far)
 }
@@ -103,27 +127,6 @@ pub fn create_view_projection_ortho(left: f32, right: f32, bottom: f32, top: f32
 
     // construct projection matrix
     let project_mat = OPENGL_TO_WGPU_MATRIX * ortho(left, right, bottom, top, near, far);
-
-    // contruct view-projection matrix
-    let view_project_mat = project_mat * view_mat;
-
-    // return various matrices
-    (view_mat, project_mat, view_project_mat)
-}
-
-pub fn create_view_projection(camera_position: Point3<f32>, look_direction: Point3<f32>, up_direction: Vector3<f32>,
-                              aspect:f32, is_perspective:bool) -> (Matrix4<f32>, Matrix4<f32>, Matrix4<f32>) {
-
-    // construct view matrix
-    let view_mat = Matrix4::look_at_rh(camera_position, look_direction, up_direction);
-
-    // construct projection matrix
-    let project_mat:Matrix4<f32>;
-    if is_perspective {
-        project_mat = OPENGL_TO_WGPU_MATRIX * perspective(Rad(2.0*PI/5.0), aspect, 0.1, 100.0);
-    } else {
-        project_mat = OPENGL_TO_WGPU_MATRIX * ortho(-4.0, 4.0, -3.0, 3.0, -1.0, 6.0);
-    }
 
     // contruct view-projection matrix
     let view_project_mat = project_mat * view_mat;

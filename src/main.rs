@@ -1,27 +1,19 @@
 mod common;
-mod vertex_data;
-mod transforms;
-
-fn vertex(p:[i8; 3], n: [i8; 3]) -> common::Vertex {
-    common::Vertex {
-        position: [p[0] as f32, p[1] as f32, p[2] as f32, 1.0],
-        normal: [n[0] as f32, n[1] as f32, n[2] as f32, 1.0],
-    }
-}
-
-fn create_vertices() -> Vec<common::Vertex> {
-    let pos = vertex_data::cube_positions();
-    let normal= vertex_data::cube_normals();
-
-    let mut data:Vec<common::Vertex> = Vec::with_capacity(pos.len());
-    for i in 0..pos.len() {
-        data.push(vertex(pos[i], normal[i]));
-    }
-    data.to_vec()
-}
+mod math_func;
 
 fn main(){
-    let vertex_data = create_vertices();
-    let light_data = common::light([1.0,0.0,0.0], [1.0, 1.0, 0.0], 0.1, 0.6, 0.3, 30.0);
-    common::run(&vertex_data, light_data, "cube");
+    let mut colormap_name = "mountain";//color map name
+    let mut is_two_side:i32 = 0;//one sided no lighting on the under side
+    let args: Vec<String> = std::env::args().collect();
+    if args.len() > 1 {
+        colormap_name = &args[1];
+    }
+    if args.len() > 2 {
+        is_two_side = args[2].parse().unwrap();
+    }
+    //create vertex data from common rs file and using the function from mathfunc.rs file
+    let vertex_data = common::create_vertices(&math_func::peaks, colormap_name, -3.0, 3.0, -3.0, 3.0,
+                                              30, 30, 2.0, 0.9);//set scale to two and aspect ratio to .7 to .9 for more precise
+    let light_data = common::light([1.0, 1.0, 1.0], 0.1, 0.8, 0.4, 30.0, is_two_side);//1,1,1 for specular light color and set light intensity
+    common::run(&vertex_data, light_data, colormap_name, "Peaks");//create sinc surface now peaks
 }
