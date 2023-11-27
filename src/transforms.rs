@@ -2,7 +2,7 @@
 use std::f32::consts::PI;
 use winit::window::Window;
 use cgmath::*;
-//git not working
+
 #[rustfmt::skip]
 #[allow(unused)]
 pub const OPENGL_TO_WGPU_MATRIX: Matrix4<f32> = Matrix4::new(
