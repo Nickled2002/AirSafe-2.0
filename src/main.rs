@@ -2,7 +2,7 @@ mod common;
 mod math_func;
 
 fn main(){
-    let mut colormap_name = "jet";
+    let mut colormap_name = "jet";//color map name
     let mut is_two_side:i32 = 0;//one sided
     let args: Vec<String> = std::env::args().collect();
     if args.len() > 1 {

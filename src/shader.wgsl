@@ -1,4 +1,4 @@
-// vertex shader
+// vertex shaders
 
 struct Uniforms {
     model_mat : mat4x4<f32>,

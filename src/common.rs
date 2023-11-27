@@ -13,7 +13,7 @@ mod transforms;
 #[path="surface_data.rs"]
 mod surface;
 
-const ANIMATION_SPEED:f32 = 1.0;
+const ANIMATION_SPEED:f32 = 1.0;//changes if and how fast it rotates
 const IS_PERSPECTIVE:bool = true;
 
 #[repr(C)]
