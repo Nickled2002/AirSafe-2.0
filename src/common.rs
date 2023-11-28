@@ -56,13 +56,13 @@ pub fn vertex(p:[f32;3], n:[f32; 3], c:[f32; 3]) -> Vertex {
 
 pub fn create_vertices(f: &dyn Fn(f32, f32) ->[f32;3], colormap_name: &str, xmin:f32, xmax:f32, zmin:f32, zmax:f32,
                        nx:usize, nz:usize, scale:f32, aspect:f32) -> Vec<Vertex> {
-    let (pts, yrange) = surface::simple_surface_points(f, xmin, xmax, zmin, zmax, nx, nz, scale, aspect);
-    let pos = surface::simple_surface_positions(&pts, nx, nz);
-    let normal = surface::simple_surface_normals(&pts, nx, nz);
-    let color = surface::simple_surface_colors(&pts, nx, nz, yrange, colormap_name);
+    let (pts, yrange) = surface::simple_surface_points(f, xmin, xmax, zmin, zmax, nx, nz, scale, aspect);//normalised points
+    let pos = surface::simple_surface_positions(&pts, nx, nz);//use it to get position
+    let normal = surface::simple_surface_normals(&pts, nx, nz);//normal
+    let color = surface::simple_surface_colors(&pts, nx, nz, yrange, colormap_name);//and color
     let mut data:Vec<Vertex> = Vec::with_capacity(pos.len());
     for i in 0..pos.len() {
-        data.push(vertex(pos[i], normal[i], color[i]));
+        data.push(vertex(pos[i], normal[i], color[i]));//data to vertexes from above
     }
     data.to_vec()
 }
@@ -89,7 +89,7 @@ pub struct State {
     num_vertices: u32,
 }
 
-impl State {
+impl State {//use vertex data to specify light data and vector data for any kind of 3d surface
     pub async fn new(window: &Window, vertex_data: &Vec<Vertex>, light_data: Light) -> Self {
         let init =  transforms::InitWgpu::init_wgpu(window).await;
 
@@ -364,11 +364,11 @@ pub fn run(vertex_data: &Vec<Vertex>, light_data: Light, colormap_name: &str, ti
     env_logger::init();
     let event_loop = EventLoop::new();
     let window = winit::window::WindowBuilder::new().build(&event_loop).unwrap();
-    window.set_title(&*format!("ch09_{}: {}", title, colormap_name));
+    window.set_title(&*format!("Honours{}: {}", title, colormap_name));
 
     let mut state = pollster::block_on(State::new(&window, &vertex_data, light_data));
     let render_start_time = std::time::Instant::now();
-
+//window and event loop was in main
     event_loop.run(move |event, _, control_flow| {
         match event {
             Event::WindowEvent {

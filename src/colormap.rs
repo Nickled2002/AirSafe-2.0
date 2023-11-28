@@ -9,14 +9,14 @@ pub fn color_interp(colormap_name: &str, min:f32, max:f32, mut t:f32) -> [f32; 3
     }
     let tn = (t-min)/(max - min);
     let colors = colormap_data(colormap_name);
-    let indx = (10.0 * tn).floor() as usize;
+    let index = (10.0 * tn).floor() as usize;
 
-    if indx as f32 == 10.0 * tn {
-        colors[indx]
+    if index as f32 == 10.0 * tn {
+        colors[index]
     } else {
-        let tn1 = (tn - 0.1 * indx as f32)*10.0; // rescale
-        let a = colors[indx];
-        let b = colors[indx+1];
+        let tn1 = (tn - 0.1 * index as f32)*10.0; // rescale
+        let a = colors[index];
+        let b = colors[index +1];
         let color_r = a[0] + (b[0] - a[0]) * tn1;
         let color_g = a[1] + (b[1] - a[1]) * tn1;
         let color_b = a[2] + (b[2] - a[2]) * tn1;
@@ -26,7 +26,6 @@ pub fn color_interp(colormap_name: &str, min:f32, max:f32, mut t:f32) -> [f32; 3
 
 pub fn colormap_data(colormap_name: &str) -> [[f32; 3]; 11] {
     let colors = match colormap_name {
-
         "mountain" => [[0.0,0.0,1.0],[0.0,0.0,1.0],[0.0,0.98,1.0],[0.0,0.98,1.0],[0.7,0.7,0.5],[0.0,1.0,0.0],
             [0.25,0.16,0.1],[0.25,0.16,0.1],[0.25,0.16,0.1],[1.0,1.0,1.0],[1.0,1.0,1.0]],
 
