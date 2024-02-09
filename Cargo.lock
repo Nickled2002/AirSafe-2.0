@@ -1749,6 +1749,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "srtm"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "daa634fb4673b3ca52aace70afb1e68e16fb235c0771cde5aff8cce59c19779a"
+dependencies = [
+ "byteorder",
+]
+
+[[package]]
 name = "static_assertions"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2396,6 +2405,7 @@ dependencies = [
  "log",
  "pollster",
  "rand",
+ "srtm",
  "wgpu",
  "winit",
 ]

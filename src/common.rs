@@ -8,6 +8,7 @@ use winit::{
     event_loop::{ControlFlow, EventLoop},
 };
 use bytemuck:: {Pod, Zeroable, cast_slice};
+
 #[path="transforms.rs"]
 mod transforms;
 #[path="surface_data.rs"]
@@ -54,8 +55,8 @@ pub fn vertex(p:[f32;3], n:[f32; 3], c:[f32; 3]) -> Vertex {
     }
 }
 
-pub fn create_vertices(f: &dyn Fn(f32, f32) ->[f32;3], colormap_name: &str, xmin:f32, xmax:f32, zmin:f32, zmax:f32,
-                       nx:usize, nz:usize, scale:f32, aspect:f32) -> Vec<Vertex> {
+pub fn create_vertices(f: &dyn Fn(f32, f32, f32) ->[f32;3], colormap_name: &str, xmin:f32, xmax:f32, zmin:f32, zmax:f32,
+                       nx:usize, nz:usize, scale:f32, aspect:f32, ) -> Vec<Vertex> {
     let (pts, yrange) = surface::simple_surface_points(f, xmin, xmax, zmin, zmax, nx, nz, scale, aspect);//normalised points
     let pos = surface::simple_surface_positions(&pts, nx, nz);//use it to get position
     let normal = surface::simple_surface_normals(&pts, nx, nz);//normal

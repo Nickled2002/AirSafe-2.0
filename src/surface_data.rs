@@ -1,5 +1,7 @@
 #![allow(dead_code)]
 use cgmath::*;
+use srtm::Tile;
+
 mod colormap;
 //can make code more efficient by combining functions and only requiring two for loops
 //also use four indexed vertex data instead of six vertices
@@ -75,7 +77,7 @@ pub fn simple_surface_positions(pts: &Vec<Vec<[f32; 3]>>, nx:usize, nz: usize) -
     positions
 }
 
-pub fn simple_surface_points(f: &dyn Fn(f32, f32) -> [f32; 3], xmin:f32, xmax:f32, zmin:f32, zmax:f32,
+pub fn simple_surface_points(f: &dyn Fn(f32, f32, f32) -> [f32; 3], xmin:f32, xmax:f32, zmin:f32, zmax:f32,
                              nx:usize, nz: usize, scale:f32, aspect:f32) -> (Vec<Vec<[f32; 3]>>, [f32; 2]) {
 
     let dx = (xmax-xmin)/(nx as f32-1.0);
@@ -84,15 +86,31 @@ pub fn simple_surface_points(f: &dyn Fn(f32, f32) -> [f32; 3], xmin:f32, xmax:f3
     let mut ymax: f32 = 0.0;
     //2D ARRAY NORMALISE THE POINT WITH FUNC
     let mut pts:Vec<Vec<[f32; 3]>> = vec![vec![Default::default(); nz]; nx];
+    let data: Tile = Tile::from_file("src/N07E007.hgt").unwrap();
+    let data2: Tile = Tile::from_file("src/N11E030.hgt").unwrap();
     for i in 0..nx {
         let x = xmin + i as f32 * dx;
         let mut pt1:Vec<[f32; 3]> = Vec::with_capacity(nz);
         for j in 0..nz {
             let z = zmin + j as f32 * dz;
-            let pt = f(x, z);
-            pt1.push(pt);
-            ymin = if pt[1] < ymin { pt[1] } else { ymin };
-            ymax = if pt[1] > ymax { pt[1] } else { ymax };
+            if z <= zmax/2.0{
+                let y:f32 = (srtm::Tile::get(&data, x as u32, z as u32)) as f32;
+                let pt = f(x, z, y);
+                pt1.push(pt);
+                ymin = if pt[1] < ymin { pt[1] } else { ymin };
+                ymax = if pt[1] > ymax { pt[1] } else { ymax };
+            }
+            if z > zmax/2.0{
+               // let xnow = x -3600.0;
+                let znow = z -3600.0;
+                let y:f32 = (srtm::Tile::get(&data2, x as u32, znow as u32)) as f32;
+                let pt = f(x, z, y);
+                pt1.push(pt);
+                ymin = if pt[1] < ymin { pt[1] } else { ymin };
+                ymax = if pt[1] > ymax { pt[1] } else { ymax };
+            }
+
+
         }
         pts[i] = pt1;
     }
