@@ -14,7 +14,7 @@ mod transforms;
 #[path="surface_data.rs"]
 mod surface;
 
-const ANIMATION_SPEED:f32 = 1.0;//changes if and how fast it rotates
+const ANIMATION_SPEED:f32 = 0.0;//changes if and how fast it rotates
 const IS_PERSPECTIVE:bool = true;
 
 #[repr(C)]
@@ -101,8 +101,8 @@ impl State {//use vertex data to specify light data and vector data for any kind
         });
 
         // uniform data
-        let camera_position = (3.5, 1.75, 3.5).into();
-        let look_direction = (0.0,0.0,0.0).into();
+        let camera_position = (-2.75, 6.0, -01.75).into();
+        let look_direction = (1.0,0.0,0.75).into();
         let up_direction = cgmath::Vector3::unit_y();
 
         let (view_mat, project_mat, _view_project_mat) =
@@ -275,10 +275,11 @@ impl State {//use vertex data to specify light data and vector data for any kind
         false
     }
 
+    //render here
     pub fn update(&mut self, dt: std::time::Duration) {
         // update uniform buffer
         let dt = ANIMATION_SPEED * dt.as_secs_f32();
-        let model_mat = transforms::create_transforms([0.0,0.0,0.0], [dt.sin(), dt.cos(), 0.0], [1.0, 1.0, 1.0]);
+        let model_mat = transforms::create_transforms([0.0,0.0,0.0], [dt.sin(), dt.cos(), 0.0], [2.0, 2.0, 2.0]);
         let view_project_mat = self.project_mat * self.view_mat;
 
         let normal_mat = (model_mat.invert().unwrap()).transpose();

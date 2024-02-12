@@ -10,9 +10,3 @@ pub fn peaks (x:f32, z:f32, y:f32) -> [f32; 3] {
     //    10.0*(x/5.0-x*x*x-z*z*z*z*z)*(-x*x-z*z).exp() - 1.0/3.0*(-(x+1.0)*(x+1.0)-z*z).exp();
     [x, y, z]
 }
-pub fn sinc (x:f32, z:f32) -> [f32; 3] {
-    //sinc function takes xz and calcs y so outputs xyz
-    let r = (x*x + z*z).sqrt();
-    let y = if r == 0.0 { 1.0 } else { r.sin()/r };
-    [x, y, z]
-}
