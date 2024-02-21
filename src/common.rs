@@ -129,8 +129,8 @@ impl State {//use vertex data to specify light data and vector data for any kind
         // store light and eye positions
         let light_position:&[f32; 3] = camera_position.as_ref();
         let eye_position:&[f32; 3] = camera_position.as_ref();
-        init.queue.write_buffer(&fragment_uniform_buffer, 0, bytemuck::cast_slice(light_position));
-        init.queue.write_buffer(&fragment_uniform_buffer, 16, bytemuck::cast_slice(eye_position));
+        init.queue.write_buffer(&fragment_uniform_buffer, 0, cast_slice(light_position));
+        init.queue.write_buffer(&fragment_uniform_buffer, 16,cast_slice(eye_position));
 
         // create light uniform buffer
         let light_uniform_buffer = init.device.create_buffer(&wgpu::BufferDescriptor{
@@ -141,7 +141,7 @@ impl State {//use vertex data to specify light data and vector data for any kind
         });
 
         // store light parameters
-        init.queue.write_buffer(&light_uniform_buffer, 0, bytemuck::cast_slice(&[light_data]));
+        init.queue.write_buffer(&light_uniform_buffer, 0, cast_slice(&[light_data]));
 
         let uniform_bind_group_layout = init.device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor{
             entries: &[
@@ -282,15 +282,15 @@ impl State {//use vertex data to specify light data and vector data for any kind
         let model_mat = transforms::create_transforms([0.0,0.0,0.0], [dt.sin(), dt.cos(), 0.0], [2.0, 2.0, 2.0]);
         let view_project_mat = self.project_mat * self.view_mat;
 
-        let normal_mat = (model_mat.invert().unwrap()).transpose();
+        let normal_mat = model_mat.invert().unwrap().transpose();
 
         let model_ref:&[f32; 16] = model_mat.as_ref();
         let view_projection_ref:&[f32; 16] = view_project_mat.as_ref();
         let normal_ref:&[f32; 16] = normal_mat.as_ref();
 
-        self.init.queue.write_buffer(&self.vertex_uniform_buffer, 0, bytemuck::cast_slice(model_ref));
-        self.init.queue.write_buffer(&self.vertex_uniform_buffer, 64, bytemuck::cast_slice(view_projection_ref));
-        self.init.queue.write_buffer(&self.vertex_uniform_buffer, 128, bytemuck::cast_slice(normal_ref));
+        self.init.queue.write_buffer(&self.vertex_uniform_buffer, 0, cast_slice(model_ref));
+        self.init.queue.write_buffer(&self.vertex_uniform_buffer, 64, cast_slice(view_projection_ref));
+        self.init.queue.write_buffer(&self.vertex_uniform_buffer, 128, cast_slice(normal_ref));
     }
 
     pub fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
@@ -367,7 +367,6 @@ pub fn run(vertex_data: &Vec<Vertex>, light_data: Light, colormap_name: &str, ti
     let event_loop = EventLoop::new();
     let window = winit::window::WindowBuilder::new().build(&event_loop).unwrap();
     window.set_title(&*format!("Honours{}: {}", title, colormap_name));
-    let mut keys_pressed: [bool; 6] = [false; 6];
     let mut state = pollster::block_on(State::new(&window, &vertex_data, light_data));
     let render_start_time = std::time::Instant::now();
 //window and event loop was in main
@@ -379,22 +378,15 @@ pub fn run(vertex_data: &Vec<Vertex>, light_data: Light, colormap_name: &str, ti
             } if window_id == window.id() => {
                 if !state.input(event) {
                     match event {
-                        Event::WindowEvent {
-                            event: WindowEvent::KeyboardInput { input, .. },
+                        WindowEvent::KeyboardInput {
+                            input:
+                            KeyboardInput{
+                                state: ElementState::Pressed,
+                                virtual_keycode: Some(VirtualKeyCode::W),
+                                ..
+                            },
                             ..
-                        } => {
-                            if let Some(keycode) = input.virtual_keycode {
-                                match keycode {
-                                    VirtualKeyCode::W => keys_pressed[0] = input.state == ElementState::Pressed,
-                                    VirtualKeyCode::A => keys_pressed[1] = input.state == ElementState::Pressed,
-                                    VirtualKeyCode::S => keys_pressed[2] = input.state == ElementState::Pressed,
-                                    VirtualKeyCode::D => keys_pressed[3] = input.state == ElementState::Pressed,
-                                    VirtualKeyCode::Q => keys_pressed[4] = input.state == ElementState::Pressed,
-                                    VirtualKeyCode::E => keys_pressed[5] = input.state == ElementState::Pressed,
-                                    _ => {}
-                                }
-                            }
-                        }
+                        } => { },
                         WindowEvent::CloseRequested
                         | WindowEvent::KeyboardInput {
                             input:
