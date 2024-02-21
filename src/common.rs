@@ -367,7 +367,7 @@ pub fn run(vertex_data: &Vec<Vertex>, light_data: Light, colormap_name: &str, ti
     let event_loop = EventLoop::new();
     let window = winit::window::WindowBuilder::new().build(&event_loop).unwrap();
     window.set_title(&*format!("Honours{}: {}", title, colormap_name));
-
+    let mut keys_pressed: [bool; 6] = [false; 6];
     let mut state = pollster::block_on(State::new(&window, &vertex_data, light_data));
     let render_start_time = std::time::Instant::now();
 //window and event loop was in main
@@ -379,6 +379,22 @@ pub fn run(vertex_data: &Vec<Vertex>, light_data: Light, colormap_name: &str, ti
             } if window_id == window.id() => {
                 if !state.input(event) {
                     match event {
+                        Event::WindowEvent {
+                            event: WindowEvent::KeyboardInput { input, .. },
+                            ..
+                        } => {
+                            if let Some(keycode) = input.virtual_keycode {
+                                match keycode {
+                                    VirtualKeyCode::W => keys_pressed[0] = input.state == ElementState::Pressed,
+                                    VirtualKeyCode::A => keys_pressed[1] = input.state == ElementState::Pressed,
+                                    VirtualKeyCode::S => keys_pressed[2] = input.state == ElementState::Pressed,
+                                    VirtualKeyCode::D => keys_pressed[3] = input.state == ElementState::Pressed,
+                                    VirtualKeyCode::Q => keys_pressed[4] = input.state == ElementState::Pressed,
+                                    VirtualKeyCode::E => keys_pressed[5] = input.state == ElementState::Pressed,
+                                    _ => {}
+                                }
+                            }
+                        }
                         WindowEvent::CloseRequested
                         | WindowEvent::KeyboardInput {
                             input:
