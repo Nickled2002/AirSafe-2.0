@@ -18,3 +18,5 @@ winit = "0.28"
 bytemuck = { version = "1.4", features = ["derive"] }
 anyhow = "1.0"
 rand ="0.8"
+
+srtm = "0.1.1"

@@ -7,7 +7,7 @@ use cgmath::*;
 #[allow(unused)]
 pub const OPENGL_TO_WGPU_MATRIX: Matrix4<f32> = Matrix4::new(
     //constant matrix opengl to wgpu based on directx and metal coordinate system
-    //but cgmath s built for opengl so we need to add the z component
+    //but cgmath is built for opengl so we need to add the z component
     //so convert from opengl to WGPU
     1.0, 0.0, 0.0, 0.0,
     0.0, 1.0, 0.0, 0.0,
@@ -24,7 +24,7 @@ pub struct InitWgpu {//wgpu initialisation related code
 }
 
 impl InitWgpu {
-    pub async fn init_wgpu(window: &Window) -> Self {//initialise wgpu can be used in other applications
+    pub async fn init_wgpu(window: &Window) -> Self {//initialise wgpu application
         let size = window.inner_size();
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
             backends: wgpu::Backends::DX12,
