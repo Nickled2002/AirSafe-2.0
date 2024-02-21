@@ -385,6 +385,7 @@ pub fn run(vertex_data: &Vec<Vertex>, light_data: Light, colormap_name: &str, ti
                             KeyboardInput {
                                 state: ElementState::Pressed,
                                 virtual_keycode: Some(VirtualKeyCode::Escape),
+                                //virtual_keycode: Some(VirtualKeyCode::W),
                                 ..
                             },
                             ..
