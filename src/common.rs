@@ -44,8 +44,16 @@ pub fn light(sc:[f32;3], ambient: f32, diffuse: f32, specular: f32, shininess: f
 pub struct Vertex {
     pub position: [f32; 4],
     pub normal: [f32; 4],
-    pub color: [f32; 4],
+    pub color: [f32; 4]
 }
+#[repr(C)]
+#[derive(Copy, Clone, Debug, Pod, Zeroable)]
+pub struct CamPos{
+    pub x:f32,
+    pub y:f32,
+    pub z:f32
+}
+
 
 pub fn vertex(p:[f32;3], n:[f32; 3], c:[f32; 3]) -> Vertex {
     Vertex {
@@ -88,6 +96,7 @@ pub struct State {
     view_mat: Matrix4<f32>,
     project_mat: Matrix4<f32>,
     num_vertices: u32,
+    camera: CamPos,
 }
 
 impl State {//use vertex data to specify light data and vector data for any kind of 3d surface
@@ -99,16 +108,19 @@ impl State {//use vertex data to specify light data and vector data for any kind
             source: wgpu::ShaderSource::Wgsl(include_str!("shader.wgsl").into()),
             //source: wgpu::ShaderSource::Wgsl(include_str!(concat!(env!("CARGO_MANIFEST_DIR"),"/examples/ch06/line3d.wgsl")).into()),
         });
+        let camera = CamPos{
+            x:-2.75,
+            y:6.0,
+            z:-01.75,
+        };
 
-        // uniform data
-        let camera_position = (-2.75, 6.0, -01.75).into();
+        let camera_position = (camera.x, camera.y, camera.z).into();
         let look_direction = (1.0,0.0,0.75).into();
         let up_direction = cgmath::Vector3::unit_y();
 
-        let (view_mat, project_mat, _view_project_mat) =
+        let (view_mat, project_mat, _view_project_mat ) =
             transforms::create_view_projection(camera_position, look_direction, up_direction,
                                                init.config.width as f32 / init.config.height as f32, IS_PERSPECTIVE);
-
         // create vertex uniform buffer
         // model_mat and view_projection_mat will be stored in vertex_uniform_buffer inside the update function
         let vertex_uniform_buffer = init.device.create_buffer(&wgpu::BufferDescriptor{
@@ -256,6 +268,7 @@ impl State {//use vertex data to specify light data and vector data for any kind
             view_mat,
             project_mat,
             num_vertices,
+            camera,
         }
     }
 
@@ -268,6 +281,18 @@ impl State {//use vertex data to specify light data and vector data for any kind
             self.init.surface.configure(&self.init.device, &self.init.config);
             self.project_mat = transforms::create_projection(new_size.width as f32 / new_size.height as f32, IS_PERSPECTIVE);
         }
+    }
+
+    pub fn plane_move(&mut self) {
+        let look_direction = (1.0,0.0,0.75).into();
+        let up_direction = cgmath::Vector3::unit_y();
+        self.camera.z = self.camera.z +0.1;
+        self.camera.x =self.camera.x+0.1;
+        let camera_position = (self.camera.x, self.camera.y, self.camera.z).into();
+        let (view_mat,   project_mat, _view_project_mat) =
+        transforms::create_view_projection(camera_position, look_direction, up_direction, self.init.config.width as f32 / self.init.config.height as f32, IS_PERSPECTIVE);
+        self.view_mat=view_mat;
+        self.project_mat=project_mat;
     }
 
     #[allow(unused_variables)]
@@ -386,7 +411,9 @@ pub fn run(vertex_data: &Vec<Vertex>, light_data: Light, colormap_name: &str, ti
                                 ..
                             },
                             ..
-                        } => { },
+                        } => {
+                            state.plane_move();
+                        },
                         WindowEvent::CloseRequested
                         | WindowEvent::KeyboardInput {
                             input:
