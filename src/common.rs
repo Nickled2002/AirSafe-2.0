@@ -283,11 +283,19 @@ impl State {//use vertex data to specify light data and vector data for any kind
         }
     }
 
-    pub fn plane_move(&mut self) {
+    pub fn plane_move(&mut self, moves: char) {
+        match moves {
+            'w' => self.camera.x =self.camera.x+0.1,
+            's' => self.camera.x =self.camera.x-0.1,
+            'a' => self.camera.z = self.camera.z +0.1,
+            'd' => self.camera.z = self.camera.z -0.1,
+            'q' => self.camera.y=self.camera.y+0.1,
+            'e' => self.camera.y=self.camera.y-0.1,
+            _ => {}
+        }
         let look_direction = (1.0,0.0,0.75).into();
         let up_direction = cgmath::Vector3::unit_y();
-        self.camera.z = self.camera.z +0.1;
-        self.camera.x =self.camera.x+0.1;
+
         let camera_position = (self.camera.x, self.camera.y, self.camera.z).into();
         let (view_mat,   project_mat, _view_project_mat) =
         transforms::create_view_projection(camera_position, look_direction, up_direction, self.init.config.width as f32 / self.init.config.height as f32, IS_PERSPECTIVE);
@@ -412,7 +420,58 @@ pub fn run(vertex_data: &Vec<Vertex>, light_data: Light, colormap_name: &str, ti
                             },
                             ..
                         } => {
-                            state.plane_move();
+                            state.plane_move('w');
+                        },
+                        WindowEvent::KeyboardInput {
+                            input:
+                            KeyboardInput{
+                                state: ElementState::Pressed,
+                                virtual_keycode: Some(VirtualKeyCode::S),
+                                ..
+                            },
+                            ..
+                        } => {
+                            state.plane_move('s');
+                        },WindowEvent::KeyboardInput {
+                            input:
+                            KeyboardInput{
+                                state: ElementState::Pressed,
+                                virtual_keycode: Some(VirtualKeyCode::A),
+                                ..
+                            },
+                            ..
+                        } => {
+                            state.plane_move('a');
+                        },WindowEvent::KeyboardInput {
+                            input:
+                            KeyboardInput{
+                                state: ElementState::Pressed,
+                                virtual_keycode: Some(VirtualKeyCode::D),
+                                ..
+                            },
+                            ..
+                        } => {
+                            state.plane_move('d');
+                        },WindowEvent::KeyboardInput {
+                            input:
+                            KeyboardInput{
+                                state: ElementState::Pressed,
+                                virtual_keycode: Some(VirtualKeyCode::Q),
+                                ..
+                            },
+                            ..
+                        } => {
+                            state.plane_move('q');
+                        },WindowEvent::KeyboardInput {
+                            input:
+                            KeyboardInput{
+                                state: ElementState::Pressed,
+                                virtual_keycode: Some(VirtualKeyCode::E),
+                                ..
+                            },
+                            ..
+                        } => {
+                            state.plane_move('e');
                         },
                         WindowEvent::CloseRequested
                         | WindowEvent::KeyboardInput {
