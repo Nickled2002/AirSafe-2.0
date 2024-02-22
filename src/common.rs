@@ -44,8 +44,16 @@ pub fn light(sc:[f32;3], ambient: f32, diffuse: f32, specular: f32, shininess: f
 pub struct Vertex {
     pub position: [f32; 4],
     pub normal: [f32; 4],
-    pub color: [f32; 4],
+    pub color: [f32; 4]
 }
+#[repr(C)]
+#[derive(Copy, Clone, Debug, Pod, Zeroable)]
+pub struct CamPos{
+    pub x:f32,
+    pub y:f32,
+    pub z:f32
+}
+
 
 pub fn vertex(p:[f32;3], n:[f32; 3], c:[f32; 3]) -> Vertex {
     Vertex {
@@ -88,6 +96,7 @@ pub struct State {
     view_mat: Matrix4<f32>,
     project_mat: Matrix4<f32>,
     num_vertices: u32,
+    camera: CamPos,
 }
 
 impl State {//use vertex data to specify light data and vector data for any kind of 3d surface
@@ -99,16 +108,19 @@ impl State {//use vertex data to specify light data and vector data for any kind
             source: wgpu::ShaderSource::Wgsl(include_str!("shader.wgsl").into()),
             //source: wgpu::ShaderSource::Wgsl(include_str!(concat!(env!("CARGO_MANIFEST_DIR"),"/examples/ch06/line3d.wgsl")).into()),
         });
+        let camera = CamPos{
+            x:-2.75,
+            y:6.0,
+            z:-01.75,
+        };
 
-        // uniform data
-        let camera_position = (-2.75, 6.0, -01.75).into();
+        let camera_position = (camera.x, camera.y, camera.z).into();
         let look_direction = (1.0,0.0,0.75).into();
         let up_direction = cgmath::Vector3::unit_y();
 
-        let (view_mat, project_mat, _view_project_mat) =
+        let (view_mat, project_mat, _view_project_mat ) =
             transforms::create_view_projection(camera_position, look_direction, up_direction,
                                                init.config.width as f32 / init.config.height as f32, IS_PERSPECTIVE);
-
         // create vertex uniform buffer
         // model_mat and view_projection_mat will be stored in vertex_uniform_buffer inside the update function
         let vertex_uniform_buffer = init.device.create_buffer(&wgpu::BufferDescriptor{
@@ -129,8 +141,8 @@ impl State {//use vertex data to specify light data and vector data for any kind
         // store light and eye positions
         let light_position:&[f32; 3] = camera_position.as_ref();
         let eye_position:&[f32; 3] = camera_position.as_ref();
-        init.queue.write_buffer(&fragment_uniform_buffer, 0, bytemuck::cast_slice(light_position));
-        init.queue.write_buffer(&fragment_uniform_buffer, 16, bytemuck::cast_slice(eye_position));
+        init.queue.write_buffer(&fragment_uniform_buffer, 0, cast_slice(light_position));
+        init.queue.write_buffer(&fragment_uniform_buffer, 16,cast_slice(eye_position));
 
         // create light uniform buffer
         let light_uniform_buffer = init.device.create_buffer(&wgpu::BufferDescriptor{
@@ -141,7 +153,7 @@ impl State {//use vertex data to specify light data and vector data for any kind
         });
 
         // store light parameters
-        init.queue.write_buffer(&light_uniform_buffer, 0, bytemuck::cast_slice(&[light_data]));
+        init.queue.write_buffer(&light_uniform_buffer, 0, cast_slice(&[light_data]));
 
         let uniform_bind_group_layout = init.device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor{
             entries: &[
@@ -256,6 +268,7 @@ impl State {//use vertex data to specify light data and vector data for any kind
             view_mat,
             project_mat,
             num_vertices,
+            camera,
         }
     }
 
@@ -270,6 +283,26 @@ impl State {//use vertex data to specify light data and vector data for any kind
         }
     }
 
+    pub fn plane_move(&mut self, moves: char) {
+        match moves {
+            'w' => self.camera.x =self.camera.x+0.1,
+            's' => self.camera.x =self.camera.x-0.1,
+            'a' => self.camera.z = self.camera.z +0.1,
+            'd' => self.camera.z = self.camera.z -0.1,
+            'q' => self.camera.y=self.camera.y+0.1,
+            'e' => self.camera.y=self.camera.y-0.1,
+            _ => {}
+        }
+        let look_direction = (1.0,0.0,0.75).into();
+        let up_direction = cgmath::Vector3::unit_y();
+
+        let camera_position = (self.camera.x, self.camera.y, self.camera.z).into();
+        let (view_mat,   project_mat, _view_project_mat) =
+        transforms::create_view_projection(camera_position, look_direction, up_direction, self.init.config.width as f32 / self.init.config.height as f32, IS_PERSPECTIVE);
+        self.view_mat=view_mat;
+        self.project_mat=project_mat;
+    }
+
     #[allow(unused_variables)]
     pub fn input(&mut self, event: &WindowEvent) -> bool {
         false
@@ -282,15 +315,15 @@ impl State {//use vertex data to specify light data and vector data for any kind
         let model_mat = transforms::create_transforms([0.0,0.0,0.0], [dt.sin(), dt.cos(), 0.0], [2.0, 2.0, 2.0]);
         let view_project_mat = self.project_mat * self.view_mat;
 
-        let normal_mat = (model_mat.invert().unwrap()).transpose();
+        let normal_mat = model_mat.invert().unwrap().transpose();
 
         let model_ref:&[f32; 16] = model_mat.as_ref();
         let view_projection_ref:&[f32; 16] = view_project_mat.as_ref();
         let normal_ref:&[f32; 16] = normal_mat.as_ref();
 
-        self.init.queue.write_buffer(&self.vertex_uniform_buffer, 0, bytemuck::cast_slice(model_ref));
-        self.init.queue.write_buffer(&self.vertex_uniform_buffer, 64, bytemuck::cast_slice(view_projection_ref));
-        self.init.queue.write_buffer(&self.vertex_uniform_buffer, 128, bytemuck::cast_slice(normal_ref));
+        self.init.queue.write_buffer(&self.vertex_uniform_buffer, 0, cast_slice(model_ref));
+        self.init.queue.write_buffer(&self.vertex_uniform_buffer, 64, cast_slice(view_projection_ref));
+        self.init.queue.write_buffer(&self.vertex_uniform_buffer, 128, cast_slice(normal_ref));
     }
 
     pub fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
@@ -367,7 +400,6 @@ pub fn run(vertex_data: &Vec<Vertex>, light_data: Light, colormap_name: &str, ti
     let event_loop = EventLoop::new();
     let window = winit::window::WindowBuilder::new().build(&event_loop).unwrap();
     window.set_title(&*format!("Honours{}: {}", title, colormap_name));
-
     let mut state = pollster::block_on(State::new(&window, &vertex_data, light_data));
     let render_start_time = std::time::Instant::now();
 //window and event loop was in main
@@ -379,12 +411,75 @@ pub fn run(vertex_data: &Vec<Vertex>, light_data: Light, colormap_name: &str, ti
             } if window_id == window.id() => {
                 if !state.input(event) {
                     match event {
+                        WindowEvent::KeyboardInput {
+                            input:
+                            KeyboardInput{
+                                state: ElementState::Pressed,
+                                virtual_keycode: Some(VirtualKeyCode::W),
+                                ..
+                            },
+                            ..
+                        } => {
+                            state.plane_move('w');
+                        },
+                        WindowEvent::KeyboardInput {
+                            input:
+                            KeyboardInput{
+                                state: ElementState::Pressed,
+                                virtual_keycode: Some(VirtualKeyCode::S),
+                                ..
+                            },
+                            ..
+                        } => {
+                            state.plane_move('s');
+                        },WindowEvent::KeyboardInput {
+                            input:
+                            KeyboardInput{
+                                state: ElementState::Pressed,
+                                virtual_keycode: Some(VirtualKeyCode::A),
+                                ..
+                            },
+                            ..
+                        } => {
+                            state.plane_move('a');
+                        },WindowEvent::KeyboardInput {
+                            input:
+                            KeyboardInput{
+                                state: ElementState::Pressed,
+                                virtual_keycode: Some(VirtualKeyCode::D),
+                                ..
+                            },
+                            ..
+                        } => {
+                            state.plane_move('d');
+                        },WindowEvent::KeyboardInput {
+                            input:
+                            KeyboardInput{
+                                state: ElementState::Pressed,
+                                virtual_keycode: Some(VirtualKeyCode::Q),
+                                ..
+                            },
+                            ..
+                        } => {
+                            state.plane_move('q');
+                        },WindowEvent::KeyboardInput {
+                            input:
+                            KeyboardInput{
+                                state: ElementState::Pressed,
+                                virtual_keycode: Some(VirtualKeyCode::E),
+                                ..
+                            },
+                            ..
+                        } => {
+                            state.plane_move('e');
+                        },
                         WindowEvent::CloseRequested
                         | WindowEvent::KeyboardInput {
                             input:
                             KeyboardInput {
                                 state: ElementState::Pressed,
                                 virtual_keycode: Some(VirtualKeyCode::Escape),
+                                //virtual_keycode: Some(VirtualKeyCode::W),
                                 ..
                             },
                             ..
