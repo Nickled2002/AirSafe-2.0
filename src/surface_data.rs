@@ -87,22 +87,32 @@ pub fn simple_surface_points(f: &dyn Fn(f32, f32, f32) -> [f32; 3], xmin:f32, xm
     let mut ymax: f32 = 0.0;
     //2D ARRAY NORMALISE THE POINT WITH FUNC
     let mut pts:Vec<Vec<[f32; 3]>> = vec![vec![Default::default(); nz]; nx];
-    let mut intcentern = 55;
-    let mut intcentere = 3;
+    let mut intcentern = 58;
+    let mut intcentere = 5;
     let data: Tile = Tile::from_file("src/Scotlandhgt/N".to_owned() + &*intcentern.to_string() +"W00"+ &*intcentere.to_string() +".hgt").unwrap();
-    intcentern -=1;
+    //intcentern -=1;
+    intcentere=4;
     let data2: Tile = Tile::from_file("src/Scotlandhgt/N".to_owned() + &*intcentern.to_string() +"W00"+ &*intcentere.to_string() +".hgt").unwrap();
-    intcentern +=1;
-    intcentere -=1;
+    //intcentern +=1;
+    //intcentere -=1;
+    intcentere=3;
     let data3: Tile = Tile::from_file("src/Scotlandhgt/N".to_owned() + &*intcentern.to_string() +"W00"+ &*intcentere.to_string() +".hgt").unwrap();
-    intcentern -=1;
+    //intcentern -=1;
+    intcentern=57;
+    intcentere=5;
     let data4: Tile = Tile::from_file("src/Scotlandhgt/N".to_owned() + &*intcentern.to_string() +"W00"+ &*intcentere.to_string() +".hgt").unwrap();
+    intcentere=4;
+    let data5: Tile = Tile::from_file("src/Scotlandhgt/N".to_owned() + &*intcentern.to_string() +"W00"+ &*intcentere.to_string() +".hgt").unwrap();
+    intcentere=3;
+    let data6: Tile = Tile::from_file("src/Scotlandhgt/N".to_owned() + &*intcentern.to_string() +"W00"+ &*intcentere.to_string() +".hgt").unwrap();
+    intcentern=56;
+    intcentere=5;
+    let data7: Tile = Tile::from_file("src/Scotlandhgt/N".to_owned() + &*intcentern.to_string() +"W00"+ &*intcentere.to_string() +".hgt").unwrap();
+    intcentere=4;
 
-    let data5: Tile = Tile::from_file("src/N03E021.hgt").unwrap();
-    let data6: Tile = Tile::from_file("src/N07E007.hgt").unwrap();
-    let data7: Tile = Tile::from_file("src/N11E030.hgt").unwrap();
-    let data8: Tile = Tile::from_file("src/S05E024.hgt").unwrap();
-    let data9: Tile = Tile::from_file("src/S03E030.hgt").unwrap();
+    let data8: Tile = Tile::from_file("src/Scotlandhgt/N".to_owned() + &*intcentern.to_string() +"W00"+ &*intcentere.to_string() +".hgt").unwrap();
+    intcentere=3;
+    let data9: Tile = Tile::from_file("src/Scotlandhgt/N".to_owned() + &*intcentern.to_string() +"W00"+ &*intcentere.to_string() +".hgt").unwrap();
     for i in 0..nx {//Add x div 2 to get more detailed x to have all hgt rather thsn half
         let x = xmin + i as f32 * dx;
         let mut pt1:Vec<[f32; 3]> = Vec::with_capacity(nz);
