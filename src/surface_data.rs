@@ -1,4 +1,5 @@
 #![allow(dead_code)]
+
 use cgmath::*;
 use srtm::Tile;
 
@@ -86,7 +87,12 @@ pub fn simple_surface_points(f: &dyn Fn(f32, f32, f32) -> [f32; 3], xmin:f32, xm
     let mut ymax: f32 = 0.0;
     //2D ARRAY NORMALISE THE POINT WITH FUNC
     let mut pts:Vec<Vec<[f32; 3]>> = vec![vec![Default::default(); nz]; nx];
-    let data: Tile = Tile::from_file("src/N07E007.hgt").unwrap();
+    let intcentern = 07;
+    let intcentere = 007;
+    let ncenter = intcentern.to_string();
+    let ecenter = intcentere.to_string();
+    let centerpath = "src/N".to_owned() + &*ncenter +"E"+ &*ecenter +".hgt";
+    let data: Tile = Tile::from_file(centerpath).unwrap();
     let data2: Tile = Tile::from_file("src/N11E030.hgt").unwrap();
     let data3: Tile = Tile::from_file("src/N03E021.hgt").unwrap();
     let data4: Tile = Tile::from_file("src/S05E024.hgt").unwrap();
