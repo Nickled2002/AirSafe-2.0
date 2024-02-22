@@ -87,15 +87,22 @@ pub fn simple_surface_points(f: &dyn Fn(f32, f32, f32) -> [f32; 3], xmin:f32, xm
     let mut ymax: f32 = 0.0;
     //2D ARRAY NORMALISE THE POINT WITH FUNC
     let mut pts:Vec<Vec<[f32; 3]>> = vec![vec![Default::default(); nz]; nx];
-    let intcentern = 07;
-    let intcentere = 007;
-    let ncenter = intcentern.to_string();
-    let ecenter = intcentere.to_string();
-    let centerpath = "src/N".to_owned() + &*ncenter +"E"+ &*ecenter +".hgt";
-    let data: Tile = Tile::from_file(centerpath).unwrap();
-    let data2: Tile = Tile::from_file("src/N11E030.hgt").unwrap();
-    let data3: Tile = Tile::from_file("src/N03E021.hgt").unwrap();
-    let data4: Tile = Tile::from_file("src/S05E024.hgt").unwrap();
+    let mut intcentern = 55;
+    let mut intcentere = 3;
+    let data: Tile = Tile::from_file("src/Scotlandhgt/N".to_owned() + &*intcentern.to_string() +"W00"+ &*intcentere.to_string() +".hgt").unwrap();
+    intcentern -=1;
+    //intcentern = 54;
+    //intcentere = 3;
+    let data2: Tile = Tile::from_file("src/Scotlandhgt/N".to_owned() + &*intcentern.to_string() +"W00"+ &*intcentere.to_string() +".hgt").unwrap();
+    intcentern +=1;
+    //intcentern =55;
+    intcentere -=1;
+    //intcentere =2;
+    let data3: Tile = Tile::from_file("src/Scotlandhgt/N".to_owned() + &*intcentern.to_string() +"W00"+ &*intcentere.to_string() +".hgt").unwrap();
+    intcentern -=1;
+    //intcentern =54;
+    //intcentere =2;
+    let data4: Tile = Tile::from_file("src/Scotlandhgt/N".to_owned() + &*intcentern.to_string() +"W00"+ &*intcentere.to_string() +".hgt").unwrap();
     for i in 0..nx {//Add x div 2 to get more detailed x to have all hgt rather thsn half
         let x = xmin + i as f32 * dx;
         let mut pt1:Vec<[f32; 3]> = Vec::with_capacity(nz);
