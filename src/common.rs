@@ -55,6 +55,7 @@ pub struct CamPos{
 }
 
 
+
 pub fn vertex(p:[f32;3], n:[f32; 3], c:[f32; 3]) -> Vertex {
     Vertex {
         position: [p[0], p[1], p[2], 1.0],
@@ -109,17 +110,22 @@ impl State {//use vertex data to specify light data and vector data for any kind
             //source: wgpu::ShaderSource::Wgsl(include_str!(concat!(env!("CARGO_MANIFEST_DIR"),"/examples/ch06/line3d.wgsl")).into()),
         });
         let camera = CamPos{
-            x:-2.75,
-            y:6.0,
-            z:-01.75,
+            x:0.0,
+            y:0.0,
+            z:0.0,
         };
 
         let camera_position = (camera.x, camera.y, camera.z).into();
-        let look_direction = (1.0,0.0,0.75).into();
+        //let look_direction = (1.0,0.0,0.75).into();
+        let look_dir = cgmath::Vector3{
+            x: (camera.x+1.0),
+            y: (camera.y),
+            z: (camera.z+1.0),
+        };
         let up_direction = cgmath::Vector3::unit_y();
 
         let (view_mat, project_mat, _view_project_mat ) =
-            transforms::create_view_projection(camera_position, look_direction, up_direction,
+            transforms::create_view_projection(camera_position, look_dir, up_direction,
                                                init.config.width as f32 / init.config.height as f32, IS_PERSPECTIVE);
         // create vertex uniform buffer
         // model_mat and view_projection_mat will be stored in vertex_uniform_buffer inside the update function
@@ -287,8 +293,8 @@ impl State {//use vertex data to specify light data and vector data for any kind
         match moves {
             'w' => self.camera.x =self.camera.x+0.1,
             's' => self.camera.x =self.camera.x-0.1,
-            'a' => self.camera.z = self.camera.z +0.1,
-            'd' => self.camera.z = self.camera.z -0.1,
+            'a' => self.camera.z = self.camera.z -0.1,
+            'd' => self.camera.z = self.camera.z +0.1,
             'q' => self.camera.y=self.camera.y+0.1,
             'e' => self.camera.y=self.camera.y-0.1,
             _ => {}

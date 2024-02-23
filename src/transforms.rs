@@ -76,8 +76,8 @@ impl InitWgpu {
     }
 }
 
-pub fn create_view(camera_position: Point3<f32>, look_direction: Point3<f32>, up_direction: Vector3<f32>) -> Matrix4<f32> {
-    Matrix4::look_at_rh(camera_position, look_direction, up_direction)
+pub fn create_view(camera_position: Point3<f32>, look_direction: Vector3<f32>, up_direction: Vector3<f32>) -> Matrix4<f32> {
+    Matrix4::look_to_rh(camera_position, look_direction, up_direction)
 }
 
 pub fn create_projection(aspect:f32, is_perspective:bool) -> Matrix4<f32> {
@@ -90,11 +90,11 @@ pub fn create_projection(aspect:f32, is_perspective:bool) -> Matrix4<f32> {
     project_mat
 }
 
-pub fn create_view_projection(camera_position: Point3<f32>, look_direction: Point3<f32>, up_direction: Vector3<f32>,
+pub fn create_view_projection(camera_position: Point3<f32>, look_direction: Vector3<f32>, up_direction: Vector3<f32>,
                               aspect:f32, is_perspective:bool) -> (Matrix4<f32>, Matrix4<f32>, Matrix4<f32>) {
 
     // construct view matrix
-    let view_mat = Matrix4::look_at_rh(camera_position, look_direction, up_direction);
+    let view_mat = Matrix4::look_to_rh(camera_position, look_direction, up_direction);
 
     // construct projection matrix
     let project_mat:Matrix4<f32>;
