@@ -98,6 +98,7 @@ pub struct State {
     project_mat: Matrix4<f32>,
     num_vertices: u32,
     camera: CamPos,
+    pub camlook: CamPos,
 }
 
 impl State {//use vertex data to specify light data and vector data for any kind of 3d surface
@@ -114,18 +115,18 @@ impl State {//use vertex data to specify light data and vector data for any kind
             y:0.0,
             z:0.0,
         };
+        let camlook = CamPos{
+            x:camera.x+1.0,
+            y:0.0,
+            z:camera.z+1.0,
+        };
 
         let camera_position = (camera.x, camera.y, camera.z).into();
-        //let look_direction = (1.0,0.0,0.75).into();
-        let look_dir = cgmath::Vector3{
-            x: (camera.x+1.0),
-            y: (camera.y),
-            z: (camera.z+1.0),
-        };
+        let look_direction = (camlook.x,camlook.y,camlook.z).into();
         let up_direction = cgmath::Vector3::unit_y();
 
         let (view_mat, project_mat, _view_project_mat ) =
-            transforms::create_view_projection(camera_position, look_dir, up_direction,
+            transforms::create_view_projection(camera_position, look_direction, up_direction,
                                                init.config.width as f32 / init.config.height as f32, IS_PERSPECTIVE);
         // create vertex uniform buffer
         // model_mat and view_projection_mat will be stored in vertex_uniform_buffer inside the update function
@@ -275,6 +276,7 @@ impl State {//use vertex data to specify light data and vector data for any kind
             project_mat,
             num_vertices,
             camera,
+            camlook,
         }
     }
 
@@ -291,15 +293,21 @@ impl State {//use vertex data to specify light data and vector data for any kind
 
     pub fn plane_move(&mut self, moves: char) {
         match moves {
-            'w' => self.camera.x =self.camera.x+0.1,
-            's' => self.camera.x =self.camera.x-0.1,
+            'w' => self.camera.x = self.camera.x+0.1,
+            's' => self.camera.x = self.camera.x-0.1,
             'a' => self.camera.z = self.camera.z -0.1,
             'd' => self.camera.z = self.camera.z +0.1,
-            'q' => self.camera.y=self.camera.y+0.1,
-            'e' => self.camera.y=self.camera.y-0.1,
+            'q' => self.camera.y = self.camera.y+0.1,
+            'e' => self.camera.y = self.camera.y-0.1,
+            'r' => self.camlook.y = self.camlook.y+0.1,
+            'f' => self.camlook.y = self.camlook.y-0.1,
+            'z' => self.camlook.x = self.camlook.x +0.1,
+            'x' => self.camlook.x = self.camlook.x -0.1,
+            //'c' => self.camlook.z = self.camlook.z+0.1,
+            //'v' => self.camlook.z = self.camlook.z-0.1,
             _ => {}
         }
-        let look_direction = (1.0,0.0,0.75).into();
+        let look_direction = (self.camlook.x,self.camlook.y,self.camlook.z).into();
         let up_direction = cgmath::Vector3::unit_y();
 
         let camera_position = (self.camera.x, self.camera.y, self.camera.z).into();
@@ -479,6 +487,69 @@ pub fn run(vertex_data: &Vec<Vertex>, light_data: Light, colormap_name: &str, ti
                         } => {
                             state.plane_move('e');
                         },
+                        WindowEvent::KeyboardInput {
+                            input:
+                            KeyboardInput{
+                                state: ElementState::Pressed,
+                                virtual_keycode: Some(VirtualKeyCode::R),
+                                ..
+                            },
+                            ..
+                        } => {
+                            state.plane_move('r');
+                        },
+                        WindowEvent::KeyboardInput {
+                            input:
+                            KeyboardInput{
+                                state: ElementState::Pressed,
+                                virtual_keycode: Some(VirtualKeyCode::F),
+                                ..
+                            },
+                            ..
+                        } => {
+                            state.plane_move('f');
+                        },WindowEvent::KeyboardInput {
+                            input:
+                            KeyboardInput{
+                                state: ElementState::Pressed,
+                                virtual_keycode: Some(VirtualKeyCode::Z),
+                                ..
+                            },
+                            ..
+                        } => {
+                            state.plane_move('z');
+                        },WindowEvent::KeyboardInput {
+                            input:
+                            KeyboardInput{
+                                state: ElementState::Pressed,
+                                virtual_keycode: Some(VirtualKeyCode::X),
+                                ..
+                            },
+                            ..
+                        } => {
+                            state.plane_move('x');
+                        },WindowEvent::KeyboardInput {
+                            input:
+                            KeyboardInput{
+                                state: ElementState::Pressed,
+                                virtual_keycode: Some(VirtualKeyCode::C),
+                                ..
+                            },
+                            ..
+                        } => {
+                          state.plane_move('c');
+                        },
+                        /*WindowEvent::KeyboardInput {
+                            input:
+                            KeyboardInput{
+                                state: ElementState::Pressed,
+                                virtual_keycode: Some(VirtualKeyCode::V),
+                                ..
+                            },
+                            ..
+                        } => {
+                            state.plane_move('v');
+                        },*/
                         WindowEvent::CloseRequested
                         | WindowEvent::KeyboardInput {
                             input:
