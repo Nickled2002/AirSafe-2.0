@@ -55,6 +55,7 @@ pub struct CamPos{
 }
 
 
+
 pub fn vertex(p:[f32;3], n:[f32; 3], c:[f32; 3]) -> Vertex {
     Vertex {
         position: [p[0], p[1], p[2], 1.0],
@@ -97,6 +98,7 @@ pub struct State {
     project_mat: Matrix4<f32>,
     num_vertices: u32,
     camera: CamPos,
+    pub camlook: CamPos,
 }
 
 impl State {//use vertex data to specify light data and vector data for any kind of 3d surface
@@ -109,13 +111,18 @@ impl State {//use vertex data to specify light data and vector data for any kind
             //source: wgpu::ShaderSource::Wgsl(include_str!(concat!(env!("CARGO_MANIFEST_DIR"),"/examples/ch06/line3d.wgsl")).into()),
         });
         let camera = CamPos{
-            x:-2.75,
-            y:6.0,
-            z:-01.75,
+            x:0.0,
+            y:0.0,
+            z:0.0,
+        };
+        let camlook = CamPos{
+            x:camera.x+1.0,
+            y:0.0,
+            z:camera.z+1.0,
         };
 
         let camera_position = (camera.x, camera.y, camera.z).into();
-        let look_direction = (1.0,0.0,0.75).into();
+        let look_direction = (camlook.x,camlook.y,camlook.z).into();
         let up_direction = cgmath::Vector3::unit_y();
 
         let (view_mat, project_mat, _view_project_mat ) =
@@ -269,6 +276,7 @@ impl State {//use vertex data to specify light data and vector data for any kind
             project_mat,
             num_vertices,
             camera,
+            camlook,
         }
     }
 
@@ -285,15 +293,21 @@ impl State {//use vertex data to specify light data and vector data for any kind
 
     pub fn plane_move(&mut self, moves: char) {
         match moves {
-            'w' => self.camera.x =self.camera.x+0.1,
-            's' => self.camera.x =self.camera.x-0.1,
-            'a' => self.camera.z = self.camera.z +0.1,
-            'd' => self.camera.z = self.camera.z -0.1,
-            'q' => self.camera.y=self.camera.y+0.1,
-            'e' => self.camera.y=self.camera.y-0.1,
+            'w' => self.camera.x = self.camera.x+0.1,
+            's' => self.camera.x = self.camera.x-0.1,
+            'a' => self.camera.z = self.camera.z -0.1,
+            'd' => self.camera.z = self.camera.z +0.1,
+            'q' => self.camera.y = self.camera.y+0.1,
+            'e' => self.camera.y = self.camera.y-0.1,
+            'r' => self.camlook.y = self.camlook.y+0.1,
+            'f' => self.camlook.y = self.camlook.y-0.1,
+            'z' => self.camlook.x = self.camlook.x +0.1,
+            'x' => self.camlook.x = self.camlook.x -0.1,
+            //'c' => self.camlook.z = self.camlook.z+0.1,
+            //'v' => self.camlook.z = self.camlook.z-0.1,
             _ => {}
         }
-        let look_direction = (1.0,0.0,0.75).into();
+        let look_direction = (self.camlook.x,self.camlook.y,self.camlook.z).into();
         let up_direction = cgmath::Vector3::unit_y();
 
         let camera_position = (self.camera.x, self.camera.y, self.camera.z).into();
@@ -473,6 +487,69 @@ pub fn run(vertex_data: &Vec<Vertex>, light_data: Light, colormap_name: &str, ti
                         } => {
                             state.plane_move('e');
                         },
+                        WindowEvent::KeyboardInput {
+                            input:
+                            KeyboardInput{
+                                state: ElementState::Pressed,
+                                virtual_keycode: Some(VirtualKeyCode::R),
+                                ..
+                            },
+                            ..
+                        } => {
+                            state.plane_move('r');
+                        },
+                        WindowEvent::KeyboardInput {
+                            input:
+                            KeyboardInput{
+                                state: ElementState::Pressed,
+                                virtual_keycode: Some(VirtualKeyCode::F),
+                                ..
+                            },
+                            ..
+                        } => {
+                            state.plane_move('f');
+                        },WindowEvent::KeyboardInput {
+                            input:
+                            KeyboardInput{
+                                state: ElementState::Pressed,
+                                virtual_keycode: Some(VirtualKeyCode::Z),
+                                ..
+                            },
+                            ..
+                        } => {
+                            state.plane_move('z');
+                        },WindowEvent::KeyboardInput {
+                            input:
+                            KeyboardInput{
+                                state: ElementState::Pressed,
+                                virtual_keycode: Some(VirtualKeyCode::X),
+                                ..
+                            },
+                            ..
+                        } => {
+                            state.plane_move('x');
+                        },WindowEvent::KeyboardInput {
+                            input:
+                            KeyboardInput{
+                                state: ElementState::Pressed,
+                                virtual_keycode: Some(VirtualKeyCode::C),
+                                ..
+                            },
+                            ..
+                        } => {
+                          state.plane_move('c');
+                        },
+                        /*WindowEvent::KeyboardInput {
+                            input:
+                            KeyboardInput{
+                                state: ElementState::Pressed,
+                                virtual_keycode: Some(VirtualKeyCode::V),
+                                ..
+                            },
+                            ..
+                        } => {
+                            state.plane_move('v');
+                        },*/
                         WindowEvent::CloseRequested
                         | WindowEvent::KeyboardInput {
                             input:
