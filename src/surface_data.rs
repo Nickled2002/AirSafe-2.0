@@ -1,5 +1,6 @@
 #![allow(dead_code)]
 
+use std::thread;
 use cgmath::*;
 use srtm::{Tile};
 
@@ -87,8 +88,8 @@ pub fn simple_surface_points(xmin:f32, xmax:f32, zmin:f32, zmax:f32,
     let mut ymax: f32 = 0.0;
     //2D ARRAY NORMALISE THE POINT WITH FUNC
     let mut pts:Vec<Vec<[f32; 3]>> = vec![vec![Default::default(); nz]; nx];
-    let mut intcentern = 58;
-    let mut intcentere = 5;
+    let mut intcentern = 57;
+    let mut intcentere = 8;
     let data: Tile = Tile::from_file("src/Scotlandhgt/N".to_owned() + &*intcentern.to_string() +"W00"+ &*intcentere.to_string() +".hgt").unwrap_or(Tile::from_file("src/Scotlandhgt/N00W000.hgt").unwrap());
     intcentere -=1;
     //intcentere=4;
@@ -119,9 +120,135 @@ pub fn simple_surface_points(xmin:f32, xmax:f32, zmin:f32, zmax:f32,
     //intcentere=3;
     intcentere -=1;
     let data9: Tile = Tile::from_file("src/Scotlandhgt/N".to_owned() + &*intcentern.to_string() +"W00"+ &*intcentere.to_string() +".hgt").unwrap_or(Tile::from_file("src/Scotlandhgt/N00W000.hgt").unwrap());
+    /*
+    let square4 = thread::spawn(|| {
+
+    });
+    let square5 = thread::spawn(|| {
+
+    });
+    let square6 = thread::spawn(|| {
+
+    });
+    let square7 = thread::spawn(|| {
+
+    });
+    let square8 = thread::spawn(|| {
+
+    });
+    let square9 = thread::spawn(|| {
+
+    });*/
+
+
+
     for i in 0..nx {//Add x div 2 to get more detailed x to have all hgt rather thsn half
         let x = xmin + i as f32 * dx;
         let mut pt1:Vec<[f32; 3]> = Vec::with_capacity(nz);
+        let square1 = thread::spawn(|| {
+           for z in 1 ..3600{
+               match x as u32 {
+                   0 ..=3600 => {
+                       let y:f32 = Tile::get(&data, x as u32, z as u32) as f32;
+                       let pt:[f32;3] = [x,y,z as f32];
+                       //let pt = f(x, z, y);
+                       pt1.push(pt);
+                       ymin = if pt[1] < ymin { pt[1] } else { ymin };
+                       ymax = if pt[1] > ymax { pt[1] } else { ymax };
+                   }
+                   3601 ..= 7200=>{
+                       let xnow = x -3600.0;
+                       let y:f32 = Tile::get(&data2, xnow as u32, z as u32) as f32;
+                       let pt:[f32;3] = [x,y,z as f32];
+                       //let pt = f(x, z, y);
+                       pt1.push(pt);
+                       ymin = if pt[1] < ymin { pt[1] } else { ymin };
+                       ymax = if pt[1] > ymax { pt[1] } else { ymax };
+                   }
+                   7201..=10800 => {
+                       let xnow = x -7200.0;
+                       let y:f32 = Tile::get(&data3, xnow as u32, z as u32) as f32;
+                       let pt:[f32;3] = [x,y,z as f32];
+                       //let pt = f(x, z, y);
+                       pt1.push(pt);
+                       ymin = if pt[1] < ymin { pt[1] } else { ymin };
+                       ymax = if pt[1] > ymax { pt[1] } else { ymax };
+
+                   }
+                   _ => {}
+               }
+           }
+        });
+        let square2 = thread::spawn(|| {
+            for z in 3601..7200{
+                match x as u32 {
+                    0 ..=3600 => {
+                        let y:f32 = Tile::get(&data4, x as u32, z as u32) as f32;
+                        let pt:[f32;3] = [x,y,z as f32];
+                        //let pt = f(x, z, y);
+                        pt1.push(pt);
+                        ymin = if pt[1] < ymin { pt[1] } else { ymin };
+                        ymax = if pt[1] > ymax { pt[1] } else { ymax };
+                    }
+                    3601 ..= 7200=>{
+                        let xnow = x -3600.0;
+                        let y:f32 = Tile::get(&data5, xnow as u32, z as u32) as f32;
+                        let pt:[f32;3] = [x,y,z as f32];
+                        //let pt = f(x, z, y);
+                        pt1.push(pt);
+                        ymin = if pt[1] < ymin { pt[1] } else { ymin };
+                        ymax = if pt[1] > ymax { pt[1] } else { ymax };
+                    }
+                    7201..=10800 => {
+                        let xnow = x -7200.0;
+                        let y:f32 = Tile::get(&data6, xnow as u32, z as u32) as f32;
+                        let pt:[f32;3] = [x,y,z as f32];
+                        //let pt = f(x, z, y);
+                        pt1.push(pt);
+                        ymin = if pt[1] < ymin { pt[1] } else { ymin };
+                        ymax = if pt[1] > ymax { pt[1] } else { ymax };
+
+                    }
+                    _ => {}
+                }
+            }
+
+        });
+        let square3 = thread::spawn(|| {
+            for z in 7201..10800{
+                match x as u32 {
+                    0 ..=3600 => {
+                        let y:f32 = Tile::get(&data7, x as u32, z as u32) as f32;
+                        let pt:[f32;3] = [x,y,z as f32];
+                        //let pt = f(x, z, y);
+                        pt1.push(pt);
+                        ymin = if pt[1] < ymin { pt[1] } else { ymin };
+                        ymax = if pt[1] > ymax { pt[1] } else { ymax };
+                    }
+                    3601 ..= 7200=>{
+                        let xnow = x -3600.0;
+                        let y:f32 = Tile::get(&data8, xnow as u32, z as u32) as f32;
+                        let pt:[f32;3] = [x,y,z as f32];
+                        //let pt = f(x, z, y);
+                        pt1.push(pt);
+                        ymin = if pt[1] < ymin { pt[1] } else { ymin };
+                        ymax = if pt[1] > ymax { pt[1] } else { ymax };
+                    }
+                    7201..=10800 => {
+                        let xnow = x -7200.0;
+                        let y:f32 = Tile::get(&data9, xnow as u32, z as u32) as f32;
+                        let pt:[f32;3] = [x,y,z as f32];
+                        //let pt = f(x, z, y);
+                        pt1.push(pt);
+                        ymin = if pt[1] < ymin { pt[1] } else { ymin };
+                        ymax = if pt[1] > ymax { pt[1] } else { ymax };
+
+                    }
+                    _ => {}
+                }
+            }
+        });
+        /*
         for j in 0..nz {
             let z = zmin + j as f32 * dz;
             match z as u32{
@@ -218,7 +345,7 @@ pub fn simple_surface_points(xmin:f32, xmax:f32, zmin:f32, zmax:f32,
                     _ => {}
                 }}
                 _ => {}
-            }
+            }*/
            /* if z <= zmax/3.0 && x <= xmax/3.0{
                 let y:f32 = (srtm::Tile::get(&data, x as u32, z as u32)) as f32;
                 let pt = f(x, z, y);
@@ -284,7 +411,10 @@ pub fn simple_surface_points(xmin:f32, xmax:f32, zmin:f32, zmax:f32,
             }
             */
 
-        }
+       // }
+        square1.join().unwrap();
+        square2.join().unwrap();
+        square3.join().unwrap();
         pts[i] = pt1;
     }
 
