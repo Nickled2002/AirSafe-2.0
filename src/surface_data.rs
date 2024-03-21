@@ -1,442 +1,190 @@
 #![allow(dead_code)]
-
-use std::thread;
-use cgmath::*;
-use srtm::{Tile};
+use bytemuck:: {Pod, Zeroable};
+use srtm::Tile;
 
 mod colormap;
-//can make code more efficient by combining functions and only requiring two for loops
-//also use four indexed vertex data instead of six vertices
-pub fn simple_surface_colors(pts: &Vec<Vec<[f32; 3]>>, nx:usize, nz: usize, yrange:[f32; 2], colormap_name: &str) -> Vec<[f32; 3]> {
-    let mut colors: Vec<[f32; 3]> = Vec::with_capacity(4* (nx - 1)*(nz -1) );
-    for i in 0..nx - 1 {
-        for j in 0.. nz - 1 {
-            let p0 = pts[i][j];
-            let p1 = pts[i][j+1];
-            let p2 = pts[i+1][j+1];
-            let p3 = pts[i+1][j];
 
-            let c0 = colormap::color_interp(colormap_name, yrange[0], yrange[1], p0[1]);//calculate colors from color map based on y level
-            let c1 = colormap::color_interp(colormap_name, yrange[0], yrange[1], p1[1]);
-            let c2 = colormap::color_interp(colormap_name, yrange[0], yrange[1], p2[1]);
-            let c3 = colormap::color_interp(colormap_name, yrange[0], yrange[1], p3[1]);
-            //triangle 1
-            colors.push(c0);//add color map to vertixes
-            colors.push(c1);
-            colors.push(c2);
-            //triangle 2
-            colors.push(c2);
-            colors.push(c3);
-            colors.push(c0);
-        }
-    }
-    colors
+#[repr(C)]
+#[derive(Copy, Clone, Debug, Pod, Zeroable)]
+pub struct Vertex {
+    pub position: [f32; 3],
+    pub color: [f32; 3],
 }
 
-pub fn simple_surface_normals(pts: &Vec<Vec<[f32; 3]>>, nx:usize, nz: usize) -> Vec<[f32;3]> {
-    let mut normals: Vec<[f32; 3]> = Vec::with_capacity(4* (nx - 1)*(nz -1));
-    for i in 0..nx - 1 {
-        for j in 0.. nz - 1 {
-            //four vertices for unit cell
-            let p0 = pts[i][j];
-            let p1 = pts[i][j+1];
-            let p2 = pts[i+1][j+1];
-            let p3 = pts[i+1][j];
-
-            let ca = Vector3::new(p2[0]-p0[0], p2[1]-p0[1], p2[2]-p0[2]);//one vec
-            let db = Vector3::new(p3[0]-p1[0], p3[1]-p1[1], p3[2]-p1[2]);//two vec
-            let cp = ca.cross(db).normalize();//cross product of two diagonal vectors and normalise
-
-            normals.push([cp[0], cp[1], cp[2]]);
-            normals.push([cp[0], cp[1], cp[2]]);
-            normals.push([cp[0], cp[1], cp[2]]);
-            normals.push([cp[0], cp[1], cp[2]]);
-            normals.push([cp[0], cp[1], cp[2]]);
-            normals.push([cp[0], cp[1], cp[2]]);
-        }
-    }
-    normals
+pub struct ITerrain {
+    pub width: u32,
+    pub height: u32,
+    pub octaves: u32,
+    pub persistence: f32,
+    pub lacunarity: f32,
+    pub offsets: [f32; 2],
+    pub scale: f32,
+    pub colormap_name: String,
+    pub chunk_size: u32,
+    pub level_of_detail: u32,
+    pub normalize_mode: String,
 }
 
-pub fn simple_surface_positions(pts: &Vec<Vec<[f32; 3]>>, nx:usize, nz: usize) -> Vec<[f32;3]> {//accepts the points as input parameters from below
-    let mut positions: Vec<[f32; 3]> = Vec::with_capacity(4* (nx - 1)*(nz -1));
-    for i in 0..nx - 1 {
-        for j in 0.. nz - 1 {
-            //specify 4 points define a unit grade cell or
-            let p0 = pts[i][j];
-            let p1 = pts[i][j+1];
-            let p2 = pts[i+1][j+1];
-            let p3 = pts[i+1][j];
-            //two triangles therefore 6 vertexes two triangles one square grid
-            positions.push(p0);
-            positions.push(p1);
-            positions.push(p2);
-            positions.push(p2);
-            positions.push(p3);
-            positions.push(p0);
+impl Default for ITerrain {
+    fn default() -> Self {
+        Self {
+            width: 3600,
+            height: 3600,
+            octaves: 5,
+            persistence: 0.5,
+            lacunarity: 2.0,
+            offsets: [0.0, 0.0],
+            scale: 10.0,
+            colormap_name: "mountain".to_string(),
+            chunk_size: 241,
+            level_of_detail: 0,
+            normalize_mode: "local".to_string(),
         }
     }
-    positions
 }
 
-pub fn simple_surface_points(xmin:f32, xmax:f32, zmin:f32, zmax:f32,
-                             nx:usize, nz: usize, scale:f32, aspect:f32) -> (Vec<Vec<[f32; 3]>>, [f32; 2]) {
-
-    let dx = (xmax-xmin)/(nx as f32-1.0);
-    let dz = (zmax-zmin)/(nz as f32-1.0);
-    let mut ymin: f32 = 0.0;
-    let mut ymax: f32 = 0.0;
-    //2D ARRAY NORMALISE THE POINT WITH FUNC
-    let mut pts:Vec<Vec<[f32; 3]>> = vec![vec![Default::default(); nz]; nx];
-    let mut intcentern = 57;
-    let mut intcentere = 8;
-    let data: Tile = Tile::from_file("src/Scotlandhgt/N".to_owned() + &*intcentern.to_string() +"W00"+ &*intcentere.to_string() +".hgt").unwrap_or(Tile::from_file("src/Scotlandhgt/N00W000.hgt").unwrap());
-    intcentere -=1;
-    //intcentere=4;
-    let data2: Tile = Tile::from_file("src/Scotlandhgt/N".to_owned() + &*intcentern.to_string() +"W00"+ &*intcentere.to_string() +".hgt").unwrap_or(Tile::from_file("src/Scotlandhgt/N00W000.hgt").unwrap());
-    //intcentern +=1;
-    intcentere -=1;
-    //intcentere=3;
-    let data3: Tile = Tile::from_file("src/Scotlandhgt/N".to_owned() + &*intcentern.to_string() +"W00"+ &*intcentere.to_string() +".hgt").unwrap_or(Tile::from_file("src/Scotlandhgt/N00W000.hgt").unwrap());
-    intcentern -=1;
-    //intcentern=57;
-    intcentere +=2;
-    //intcentere=5;
-    let data4: Tile = Tile::from_file("src/Scotlandhgt/N".to_owned() + &*intcentern.to_string() +"W00"+ &*intcentere.to_string() +".hgt").unwrap_or(Tile::from_file("src/Scotlandhgt/N00W000.hgt").unwrap());
-    //intcentere=4;
-    intcentere -=1;
-    let data5: Tile = Tile::from_file("src/Scotlandhgt/N".to_owned() + &*intcentern.to_string() +"W00"+ &*intcentere.to_string() +".hgt").unwrap_or(Tile::from_file("src/Scotlandhgt/N00W000.hgt").unwrap());
-    //intcentere=3;
-    intcentere -=1;
-    let data6: Tile = Tile::from_file("src/Scotlandhgt/N".to_owned() + &*intcentern.to_string() +"W00"+ &*intcentere.to_string() +".hgt").unwrap_or(Tile::from_file("src/Scotlandhgt/N00W000.hgt").unwrap());
-    intcentern -=1;
-    //intcentern=56;
-    intcentere +=2;
-    //intcentere=5;
-    let data7: Tile = Tile::from_file("src/Scotlandhgt/N".to_owned() + &*intcentern.to_string() +"W00"+ &*intcentere.to_string() +".hgt").unwrap_or(Tile::from_file("src/Scotlandhgt/N00W000.hgt").unwrap());
-    //intcentere=4;
-    intcentere -=1;
-    let data8: Tile = Tile::from_file("src/Scotlandhgt/N".to_owned() + &*intcentern.to_string() +"W00"+ &*intcentere.to_string() +".hgt").unwrap_or(Tile::from_file("src/Scotlandhgt/N00W000.hgt").unwrap());
-    //intcentere=3;
-    intcentere -=1;
-    let data9: Tile = Tile::from_file("src/Scotlandhgt/N".to_owned() + &*intcentern.to_string() +"W00"+ &*intcentere.to_string() +".hgt").unwrap_or(Tile::from_file("src/Scotlandhgt/N00W000.hgt").unwrap());
-    /*
-    let square4 = thread::spawn(|| {
-
-    });
-    let square5 = thread::spawn(|| {
-
-    });
-    let square6 = thread::spawn(|| {
-
-    });
-    let square7 = thread::spawn(|| {
-
-    });
-    let square8 = thread::spawn(|| {
-
-    });
-    let square9 = thread::spawn(|| {
-
-    });*/
-
-
-
-    for i in 0..nx {//Add x div 2 to get more detailed x to have all hgt rather thsn half
-        let x = xmin + i as f32 * dx;
-        let mut pt1:Vec<[f32; 3]> = Vec::with_capacity(nz);
-        let square1 = thread::spawn(|| {
-           for z in 1 ..3600{
-               match x as u32 {
-                   0 ..=3600 => {
-                       let y:f32 = Tile::get(&data, x as u32, z as u32) as f32;
-                       let pt:[f32;3] = [x,y,z as f32];
-                       //let pt = f(x, z, y);
-                       pt1.push(pt);
-                       ymin = if pt[1] < ymin { pt[1] } else { ymin };
-                       ymax = if pt[1] > ymax { pt[1] } else { ymax };
-                   }
-                   3601 ..= 7200=>{
-                       let xnow = x -3600.0;
-                       let y:f32 = Tile::get(&data2, xnow as u32, z as u32) as f32;
-                       let pt:[f32;3] = [x,y,z as f32];
-                       //let pt = f(x, z, y);
-                       pt1.push(pt);
-                       ymin = if pt[1] < ymin { pt[1] } else { ymin };
-                       ymax = if pt[1] > ymax { pt[1] } else { ymax };
-                   }
-                   7201..=10800 => {
-                       let xnow = x -7200.0;
-                       let y:f32 = Tile::get(&data3, xnow as u32, z as u32) as f32;
-                       let pt:[f32;3] = [x,y,z as f32];
-                       //let pt = f(x, z, y);
-                       pt1.push(pt);
-                       ymin = if pt[1] < ymin { pt[1] } else { ymin };
-                       ymax = if pt[1] > ymax { pt[1] } else { ymax };
-
-                   }
-                   _ => {}
-               }
-           }
-        });
-        let square2 = thread::spawn(|| {
-            for z in 3601..7200{
-                match x as u32 {
-                    0 ..=3600 => {
-                        let y:f32 = Tile::get(&data4, x as u32, z as u32) as f32;
-                        let pt:[f32;3] = [x,y,z as f32];
-                        //let pt = f(x, z, y);
-                        pt1.push(pt);
-                        ymin = if pt[1] < ymin { pt[1] } else { ymin };
-                        ymax = if pt[1] > ymax { pt[1] } else { ymax };
-                    }
-                    3601 ..= 7200=>{
-                        let xnow = x -3600.0;
-                        let y:f32 = Tile::get(&data5, xnow as u32, z as u32) as f32;
-                        let pt:[f32;3] = [x,y,z as f32];
-                        //let pt = f(x, z, y);
-                        pt1.push(pt);
-                        ymin = if pt[1] < ymin { pt[1] } else { ymin };
-                        ymax = if pt[1] > ymax { pt[1] } else { ymax };
-                    }
-                    7201..=10800 => {
-                        let xnow = x -7200.0;
-                        let y:f32 = Tile::get(&data6, xnow as u32, z as u32) as f32;
-                        let pt:[f32;3] = [x,y,z as f32];
-                        //let pt = f(x, z, y);
-                        pt1.push(pt);
-                        ymin = if pt[1] < ymin { pt[1] } else { ymin };
-                        ymax = if pt[1] > ymax { pt[1] } else { ymax };
-
-                    }
-                    _ => {}
-                }
-            }
-
-        });
-        let square3 = thread::spawn(|| {
-            for z in 7201..10800{
-                match x as u32 {
-                    0 ..=3600 => {
-                        let y:f32 = Tile::get(&data7, x as u32, z as u32) as f32;
-                        let pt:[f32;3] = [x,y,z as f32];
-                        //let pt = f(x, z, y);
-                        pt1.push(pt);
-                        ymin = if pt[1] < ymin { pt[1] } else { ymin };
-                        ymax = if pt[1] > ymax { pt[1] } else { ymax };
-                    }
-                    3601 ..= 7200=>{
-                        let xnow = x -3600.0;
-                        let y:f32 = Tile::get(&data8, xnow as u32, z as u32) as f32;
-                        let pt:[f32;3] = [x,y,z as f32];
-                        //let pt = f(x, z, y);
-                        pt1.push(pt);
-                        ymin = if pt[1] < ymin { pt[1] } else { ymin };
-                        ymax = if pt[1] > ymax { pt[1] } else { ymax };
-                    }
-                    7201..=10800 => {
-                        let xnow = x -7200.0;
-                        let y:f32 = Tile::get(&data9, xnow as u32, z as u32) as f32;
-                        let pt:[f32;3] = [x,y,z as f32];
-                        //let pt = f(x, z, y);
-                        pt1.push(pt);
-                        ymin = if pt[1] < ymin { pt[1] } else { ymin };
-                        ymax = if pt[1] > ymax { pt[1] } else { ymax };
-
-                    }
-                    _ => {}
-                }
-            }
-        });
-        /*
-        for j in 0..nz {
-            let z = zmin + j as f32 * dz;
-            match z as u32{
-                0 ..=3600 =>{match x as u32 {
-                    0 ..=3600 => {
-                        let y:f32 = Tile::get(&data, x as u32, z as u32) as f32;
-                        let pt:[f32;3] = [x,y,z];
-                        //let pt = f(x, z, y);
-                        pt1.push(pt);
-                        ymin = if pt[1] < ymin { pt[1] } else { ymin };
-                        ymax = if pt[1] > ymax { pt[1] } else { ymax };
-                    }
-                    3601 ..= 7200=>{
-                        let xnow = x -3600.0;
-                        let y:f32 = Tile::get(&data2, xnow as u32, z as u32) as f32;
-                        let pt:[f32;3] = [x,y,z];
-                        //let pt = f(x, z, y);
-                        pt1.push(pt);
-                        ymin = if pt[1] < ymin { pt[1] } else { ymin };
-                        ymax = if pt[1] > ymax { pt[1] } else { ymax };
-                    }
-                    7201..=10800 => {
-                        let xnow = x -7200.0;
-                        let y:f32 = Tile::get(&data3, xnow as u32, z as u32) as f32;
-                        let pt:[f32;3] = [x,y,z];
-                        //let pt = f(x, z, y);
-                        pt1.push(pt);
-                        ymin = if pt[1] < ymin { pt[1] } else { ymin };
-                        ymax = if pt[1] > ymax { pt[1] } else { ymax };
-
-                    }
-                    _ => {}
-                }}
-                3601 ..= 7200=>{let znow = z-3600.0;
-                    match x as u32{
-                    0 ..=3600 => {
-                        let y:f32 = Tile::get(&data4, x as u32, znow as u32) as f32;
-                        let pt:[f32;3] = [x,y,z];
-                        //let pt = f(x, z, y);
-                        pt1.push(pt);
-                        ymin = if pt[1] < ymin { pt[1] } else { ymin };
-                        ymax = if pt[1] > ymax { pt[1] } else { ymax };
-                    }
-                    3601 ..= 7200=>{
-                        let xnow = x -3600.0;
-                        let y:f32 = Tile::get(&data5, xnow as u32, znow as u32) as f32;
-                        let pt:[f32;3] = [x,y,z];
-                        //let pt = f(x, z, y);
-                        pt1.push(pt);
-                        ymin = if pt[1] < ymin { pt[1] } else { ymin };
-                        ymax = if pt[1] > ymax { pt[1] } else { ymax };
-                    }
-                    7201..=10800 => {
-                        let xnow = x -7200.0;
-                        let y:f32 = Tile::get(&data6, xnow as u32, znow as u32) as f32;
-                        let pt:[f32;3] = [x,y,z];
-                        //let pt = f(x, z, y);
-                        pt1.push(pt);
-                        ymin = if pt[1] < ymin { pt[1] } else { ymin };
-                        ymax = if pt[1] > ymax { pt[1] } else { ymax };
-
-                    }
-                    _ => {}
-                }}
-                7201..=10800 => {let znow = z-7200.0;
-                    match x as u32 {
-                    0 ..=3600 => {
-                        let y:f32 = Tile::get(&data7, x as u32, znow as u32) as f32;
-                        let pt:[f32;3] = [x,y,z];
-                        //let pt = f(x, z, y);
-                        pt1.push(pt);
-                        ymin = if pt[1] < ymin { pt[1] } else { ymin };
-                        ymax = if pt[1] > ymax { pt[1] } else { ymax };
-                    }
-                    3601 ..= 7200=>{
-                        let xnow = x -3600.0;
-                        let y:f32 = Tile::get(&data8, xnow as u32, znow as u32) as f32;
-                        let pt:[f32;3] = [x,y,z];
-                        //let pt = f(x, z, y);
-                        pt1.push(pt);
-                        ymin = if pt[1] < ymin { pt[1] } else { ymin };
-                        ymax = if pt[1] > ymax { pt[1] } else { ymax };
-                    }
-                    7201..=10800 => {
-                        let xnow = x -7200.0;
-                        let y:f32 = Tile::get(&data9, xnow as u32, znow as u32) as f32;
-                        let pt:[f32;3] = [x,y,z];
-                        //let pt = f(x, z, y);
-                        pt1.push(pt);
-                        ymin = if pt[1] < ymin { pt[1] } else { ymin };
-                        ymax = if pt[1] > ymax { pt[1] } else { ymax };
-
-                    }
-                    _ => {}
-                }}
-                _ => {}
-            }*/
-           /* if z <= zmax/3.0 && x <= xmax/3.0{
-                let y:f32 = (srtm::Tile::get(&data, x as u32, z as u32)) as f32;
-                let pt = f(x, z, y);
-                pt1.push(pt);
-                ymin = if pt[1] < ymin { pt[1] } else { ymin };
-                ymax = if pt[1] > ymax { pt[1] } else { ymax };
-            }
-            if z <= (zmax/3.0)*2.0 && z > zmax/3.0 && x <= xmax/3.0{
-                let znow = z -3600.0;
-                let y:f32 = (srtm::Tile::get(&data2, x as u32, znow as u32)) as f32;
-                let pt = f(x, z, y);
-                pt1.push(pt);
-                ymin = if pt[1] < ymin { pt[1] } else { ymin };
-                ymax = if pt[1] > ymax { pt[1] } else { ymax };
-            }
-            if z > (zmax/3.0)*2.0 && z > zmax/3.0 && x <= xmax/3.0{
-                let znow = z -7200.0;
-                let y:f32 = (srtm::Tile::get(&data2, x as u32, znow as u32)) as f32;
-                let pt = f(x, z, y);
-                pt1.push(pt);
-                ymin = if pt[1] < ymin { pt[1] } else { ymin };
-                ymax = if pt[1] > ymax { pt[1] } else { ymax };
-            }
-            if z <= zmax/3.0 && x > xmax/3.0 && x <= (xmax/3.0)*2{
-                let y:f32 = (srtm::Tile::get(&data, x as u32, z as u32)) as f32;
-                let pt = f(x, z, y);
-                pt1.push(pt);
-                ymin = if pt[1] < ymin { pt[1] } else { ymin };
-                ymax = if pt[1] > ymax { pt[1] } else { ymax };
-            }
-            if z <= (zmax/3.0)*2.0 && z > zmax/3.0 && x <= xmax/3.0 && x <= (xmax/3.0)*2{
-                let znow = z -3600.0;
-                let y:f32 = (srtm::Tile::get(&data2, x as u32, znow as u32)) as f32;
-                let pt = f(x, z, y);
-                pt1.push(pt);
-                ymin = if pt[1] < ymin { pt[1] } else { ymin };
-                ymax = if pt[1] > ymax { pt[1] } else { ymax };
-            }
-            if z > (zmax/3.0)*2.0 && z > zmax/3.0 && x <= xmax/3.0{
-                let znow = z -7200.0;
-                let y:f32 = (srtm::Tile::get(&data2, x as u32, znow as u32)) as f32;
-                let pt = f(x, z, y);
-                pt1.push(pt);
-                ymin = if pt[1] < ymin { pt[1] } else { ymin };
-                ymax = if pt[1] > ymax { pt[1] } else { ymax };
-            }
-            if z <= zmax/2.0 && x > xmax/2.0 {
-                let xnow = x -3600.0;
-                let y:f32 = (srtm::Tile::get(&data3, xnow as u32, z as u32)) as f32;
-                let pt = f(x, z, y);
-                pt1.push(pt);
-                ymin = if pt[1] < ymin { pt[1] } else { ymin };
-                ymax = if pt[1] > ymax { pt[1] } else { ymax };
-            }
-            if z > zmax/2.0 && x > xmax/2.0{
-                let xnow = x -3600.0;
-                let znow = z -3600.0;
-                let y:f32 = (srtm::Tile::get(&data4, xnow as u32, znow as u32)) as f32;
-                let pt = f(x, z, y);
-                pt1.push(pt);
-                ymin = if pt[1] < ymin { pt[1] } else { ymin };
-                ymax = if pt[1] > ymax { pt[1] } else { ymax };
-            }
-            */
-
-       // }
-        square1.join().unwrap();
-        square2.join().unwrap();
-        square3.join().unwrap();
-        pts[i] = pt1;
+impl ITerrain {
+    pub fn new() -> Self {
+        Default::default()
     }
 
-    let ymin1 = ymin - (1.0 - aspect) * (ymax - ymin);
-    let ymax1 = ymax + (1.0 - aspect) * (ymax - ymin);
 
-    for i in 0..nx {
-        for j in 0..nz {
-            pts[i][j] = normalize_point(pts[i][j], xmin, xmax, ymin1, ymax1, zmin, zmax, scale);
+    pub fn create_indices(&mut self, width: u32, height: u32) -> Vec<u32> {
+        let n_vertices_per_row = height;
+        let mut indices:Vec<u32> = vec![];
+
+        for i in 0..width - 1 {
+            for j in 0..height - 1 {
+                let idx0 = j + i * n_vertices_per_row;
+                let idx1 = j + 1 + i * n_vertices_per_row;
+                let idx2 = j + 1 + (i + 1) * n_vertices_per_row;
+                let idx3 = j + (i + 1) * n_vertices_per_row;
+                indices.extend([idx0, idx1, idx2, idx2, idx3, idx0]);
+            }
         }
+        indices
     }
-    //add colormap to the y value
-    let cmin = normalize_point([0.0, ymin, 0.0], xmin, xmax, ymin1, ymax1, zmin, zmax, scale)[1];
-    let cmax = normalize_point([0.0, ymax, 0.0], xmin, xmax, ymin1, ymax1, zmin, zmax, scale)[1];
+    pub fn find_world_map(&mut self, width: u32, height: u32) -> Vec<Vec<f32>>{
+        let mut map :Vec<Vec<f32>> = vec![];
+        let mut height_min = f32::MAX;
+        let mut height_max = f32::MIN;
+        let worldmap: Tile = Tile::from_file("src/N03E021.hgt").unwrap();
+        for x in 0..width {
+            let mut p1:Vec<f32> = vec![];
+            for z in 0..height {
+                let y =  Tile::get(&worldmap, x , z ) as f32;
+                height_min = if y < height_min { y } else { height_min };
+                height_max = if y > height_max { y } else { height_max };
+                p1.push(y);
+            }
+            map.push(p1);
+        }
+        if self.normalize_mode == "global" {
+            height_min = -1.0;
+            height_max = 1.0;
+        }
 
-    return (pts, [cmin, cmax]);//returns points and colors with them
-}
+        for x in 0..width as usize {
+            for z in 0..height as usize {
+                map[x][z] = (map[x][z] - height_min)/(height_max - height_min);
+            }
+        }
 
-// private function allows for the normalisation of a 3d point into the region of -1 to 1
-fn normalize_point(pt:[f32;3], xmin:f32, xmax:f32, ymin:f32, ymax:f32, zmin:f32, zmax:f32, scale:f32) -> [f32;3] {//scale => size of the surfaces
-    let px = scale * (-1.0 + 2.0 * (pt[0] - xmin) / (xmax - xmin));
-    let py = scale * (-1.0 + 2.0 * (pt[1] - ymin) / (ymax - ymin));
-    let pz = scale * (-1.0 + 2.0 * (pt[2] - zmin) / (zmax - zmin));
-    [px, py, pz]
+        map
+    }
+
+    pub fn create_terrain_data(&mut self) -> Vec<Vertex> {
+        let cdata = colormap::colormap_data(&self.colormap_name);
+        let world_map = self.find_world_map(self.width, self.height);
+
+        let mut data:Vec<Vertex> = vec![];
+
+        for x in 0..self.width as usize {
+            for z in 0..self.height as usize {
+                let y = world_map[x][z] ;
+                //let y=0.0;
+                let position = [x as f32, y, z as f32];
+                let color = colormap::color_interp(cdata, 0.0, 1.0, y);
+
+                data.push(Vertex { position, color });
+            }
+        }
+        data
+    }
+
+    fn terrian_colormap_data(&mut self) -> (Vec<[f32; 3]>, Vec<f32>) {
+        let cdata = vec![
+            [0.055f32, 0.529, 0.8],
+            [0.761, 0.698, 0.502],
+            [0.204, 0.549, 0.192],
+            [0.353, 0.302, 0.255],
+            [1.0, 0.98, 0.98]
+        ];
+        let ta = vec![0.0f32, 0.3, 0.35, 0.6, 0.9, 1.0];
+        (cdata, ta)
+    }
+
+
+    fn color_lerp(&mut self, color:&Vec<[f32;3]>, ta:&Vec<f32>, t:f32) -> [f32;3] {
+        let len = 6usize;
+        let mut res = [0f32;3];
+        for i in 0..len - 1 {
+            if t >= ta[i] && t < ta[i + 1] {
+                res = color[i];
+            }
+        }
+        if t == ta[len-1] {
+            res = color[len-2];
+        }
+        res
+    }
+
+    fn add_terrain_colors(&mut self, color:&Vec<[f32;3]>, ta:&Vec<f32>, tmin:f32, tmax:f32, t:f32) -> [f32;3] {
+        let mut tt = if t < tmin { tmin } else if t > tmax { tmax } else { t };
+        tt = (tt - tmin)/(tmax - tmin);
+
+        self.color_lerp(color, ta, tt)
+    }
+    pub fn create_terrain_data_chunk(&mut self) -> (Vec<Vertex>, u32){
+        let increment_count = if self.level_of_detail <= 5 { self.level_of_detail + 1} else { 2*(self.level_of_detail - 2)};
+
+        let vertices_per_row = (self.chunk_size - 1)/increment_count + 1;
+
+        let (cdata, ta) = self.terrian_colormap_data();
+
+
+
+        let mut data:Vec<Vertex> = vec![];
+        let world_map=self.find_world_map(self.chunk_size, self.chunk_size);
+        for x in (0..self.chunk_size as usize).step_by(increment_count as usize) {
+            for z in (0..self.chunk_size as usize).step_by(increment_count as usize) {
+                let  y = world_map[x][z] ;
+
+                let position = [x as f32, y, z as f32];
+                let color = self.add_terrain_colors(&cdata, &ta, 0.0, 1.0, y);
+
+                data.push(Vertex { position, color });
+            }
+        }
+        (data, vertices_per_row)
+    }
+
+
+    pub fn create_terrain_data_multiple_chunks(&mut self, x_chunks:u32, z_chunks:u32, translations:&Vec<[f32;2]>)
+                                               -> (Vec<Vec<Vertex>>, u32) {
+        let mut data:Vec<Vec<Vertex>> = vec![];
+        let mut vertices_per_row = 0u32;
+
+        let mut k:u32 = 0;
+        for _i in 0..x_chunks {
+            for _j in 0..z_chunks {
+                self.offsets = translations[k as usize];
+                let dd = self.create_terrain_data_chunk();
+                data.push(dd.0);
+                vertices_per_row = dd.1;
+                k += 1;
+            }
+        }
+        (data, vertices_per_row)
+    }
 }

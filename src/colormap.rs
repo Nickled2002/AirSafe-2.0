@@ -1,5 +1,5 @@
 #![allow(dead_code)]
-pub fn color_interp(colormap_name: &str, min:f32, max:f32, mut t:f32) -> [f32; 3]{
+pub fn color_interp(colors:[[f32;3];11], min:f32, max:f32, mut t:f32) -> [f32; 3]{
     if t < min {
         t = min;
     }
@@ -8,7 +8,6 @@ pub fn color_interp(colormap_name: &str, min:f32, max:f32, mut t:f32) -> [f32; 3
 
     }
     let tn = (t-min)/(max - min);
-    let colors = colormap_data(colormap_name);
     let index = (10.0 * tn).floor() as usize;
 
     if index as f32 == 10.0 * tn {
