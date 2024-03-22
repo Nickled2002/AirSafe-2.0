@@ -8,7 +8,7 @@ use winit::{
     window::Window,
     event_loop::{ControlFlow, EventLoop},
 };
-use bytemuck::cast_slice;
+use bytemuck::{cast_slice, Pod, Zeroable};
 use wgpu::VertexBufferLayout;
 use std::time::{Instant, Duration};
 use std::collections::VecDeque;
@@ -22,10 +22,67 @@ mod surface;
 #[path="texture_data.rs"]
 mod texture;
 
+#[repr(C)]
+#[derive(Copy, Clone, Debug, Pod, Zeroable)]
+pub struct CamPos{
+    pub x:f32,
+    pub y:f32,
+    pub z:f32
+}
+pub struct IRenderPipeline<'a> {
+    pub shader: Option<&'a wgpu::ShaderModule>,
+    pub vs_shader: Option<&'a wgpu::ShaderModule>,
+    pub fs_shader: Option<&'a wgpu::ShaderModule>,
+    pub vertex_buffer_layout: &'a [VertexBufferLayout<'a>],
+    pub pipeline_layout: Option<&'a wgpu::PipelineLayout>,
+    pub topology: wgpu::PrimitiveTopology,
+    pub strip_index_format: Option<wgpu::IndexFormat>,
+    pub cull_mode: Option<wgpu::Face>,
+    pub is_depth_stencil: bool,
+    pub vs_entry: String,
+    pub fs_entry: String,
+}
 
-fn create_compute_texture_bind_group_layout(
-    device: &wgpu::Device
-) -> wgpu::BindGroupLayout {
+pub struct IWgpuInit {
+    pub instance: wgpu::Instance,
+    pub surface: wgpu::Surface,
+    pub adapter: wgpu::Adapter,
+    pub device: wgpu::Device,
+    pub queue: wgpu::Queue,
+    pub config: wgpu::SurfaceConfiguration,
+    pub size: winit::dpi::PhysicalSize<u32>,
+    pub sample_count: u32,
+}
+
+#[derive(Debug)]
+pub struct FpsCounter {
+    last_second_frames: VecDeque<Instant>,
+    last_print_time: Instant,
+}
+
+struct State {
+    init: IWgpuInit,
+    pipeline: wgpu::RenderPipeline,
+    vertex_buffer: wgpu::Buffer,
+    index_buffer: wgpu::Buffer,
+    uniform_bind_group: wgpu::BindGroup,
+    uniform_buffer: wgpu::Buffer,
+    model_mat: Matrix4<f32>,
+    view_mat: Matrix4<f32>,
+    project_mat: Matrix4<f32>,
+    depth_texture_view: wgpu::TextureView,
+    indices_lens: u32,
+    plot_type: u32,
+
+    terrain: surface::ITerrain,
+    update_buffers: bool,
+    aspect_ratio: f32,
+    fps_counter: FpsCounter,
+}
+
+
+
+fn create_compute_texture_bind_group_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
     device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor{
         label: Some("Compute Texture Bind Group Layout"),
         entries: &[
@@ -43,10 +100,7 @@ fn create_compute_texture_bind_group_layout(
     })
 }
 
-pub fn create_compute_texture_bind_group(
-    device: &wgpu::Device,
-    texture_view: &wgpu::TextureView
-) -> (wgpu::BindGroupLayout, wgpu::BindGroup) {
+pub fn create_compute_texture_bind_group(device: &wgpu::Device, texture_view: &wgpu::TextureView) -> (wgpu::BindGroupLayout, wgpu::BindGroup) {
     let layout = create_compute_texture_bind_group_layout(device);
     let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor{
         label: Some("Compute Texture Bind Group"),
@@ -61,10 +115,7 @@ pub fn create_compute_texture_bind_group(
     (layout, bind_group)
 }
 
-fn create_texture_bind_group_layout(
-    device: &wgpu::Device,
-    img_files:Vec<&str>
-) -> wgpu::BindGroupLayout {
+fn create_texture_bind_group_layout(device: &wgpu::Device, img_files:Vec<&str>) -> wgpu::BindGroupLayout {
     let mut entries:Vec<wgpu::BindGroupLayoutEntry> = vec![];
     for i in 0..img_files.len() {
         entries.push( wgpu::BindGroupLayoutEntry {
@@ -91,13 +142,7 @@ fn create_texture_bind_group_layout(
     })
 }
 
-pub fn create_texture_bind_group(
-    device: &wgpu::Device,
-    queue: &wgpu::Queue,
-    img_files:Vec<&str>,
-    u_mode:wgpu::AddressMode,
-    v_mode:wgpu::AddressMode
-) -> (wgpu::BindGroupLayout, wgpu::BindGroup) {
+pub fn create_texture_bind_group(device: &wgpu::Device, queue: &wgpu::Queue, img_files:Vec<&str>, u_mode:wgpu::AddressMode, v_mode:wgpu::AddressMode) -> (wgpu::BindGroupLayout, wgpu::BindGroup) {
     let mut img_textures:Vec<texture::ITexture> = vec![];
     let mut entries:Vec<wgpu::BindGroupEntry<'_>> = vec![];
     for i in 0..img_files.len() {
@@ -124,10 +169,7 @@ pub fn create_texture_bind_group(
     (layout, bind_group)
 }
 
-pub fn create_texture_store_bind_group(
-    device: &wgpu::Device,
-    store_texture: &texture::ITexture
-) -> (wgpu::BindGroupLayout, wgpu::BindGroup) {
+pub fn create_texture_store_bind_group(device: &wgpu::Device, store_texture: &texture::ITexture) -> (wgpu::BindGroupLayout, wgpu::BindGroup) {
     let layout = create_texture_bind_group_layout(device, vec!["None"]);
     let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor{
         layout: &layout,
@@ -165,11 +207,7 @@ pub fn create_shadow_texture_view(init: &IWgpuInit, width:u32, height:u32) -> wg
     shadow_depth_texture.create_view(&wgpu::TextureViewDescriptor::default())
 }
 
-pub fn create_bind_group_layout_storage(
-    device: &wgpu::Device,
-    shader_stages: Vec<wgpu::ShaderStages>,
-    binding_types: Vec<wgpu::BufferBindingType>
-) -> wgpu::BindGroupLayout {
+pub fn create_bind_group_layout_storage(device: &wgpu::Device, shader_stages: Vec<wgpu::ShaderStages>, binding_types: Vec<wgpu::BufferBindingType>) -> wgpu::BindGroupLayout {
     let mut entries = vec![];
 
     for i in 0..shader_stages.len() {
@@ -191,12 +229,7 @@ pub fn create_bind_group_layout_storage(
     })
 }
 
-pub fn create_bind_group_storage(
-    device: &wgpu::Device,
-    shader_stages: Vec<wgpu::ShaderStages>,
-    binding_types: Vec<wgpu::BufferBindingType>,
-    resources: &[wgpu::BindingResource<'_>]
-) -> ( wgpu::BindGroupLayout, wgpu::BindGroup) {
+pub fn create_bind_group_storage(device: &wgpu::Device, shader_stages: Vec<wgpu::ShaderStages>, binding_types: Vec<wgpu::BufferBindingType>, resources: &[wgpu::BindingResource<'_>]) -> ( wgpu::BindGroupLayout, wgpu::BindGroup) {
     let entries: Vec<_> = resources.iter().enumerate().map(|(i, resource)| {
         wgpu::BindGroupEntry {
             binding: i as u32,
@@ -214,10 +247,7 @@ pub fn create_bind_group_storage(
     (layout, bind_group)
 }
 
-pub fn create_bind_group_layout(
-    device: &wgpu::Device,
-    shader_stages: Vec<wgpu::ShaderStages>
-) -> wgpu::BindGroupLayout {
+pub fn create_bind_group_layout(device: &wgpu::Device, shader_stages: Vec<wgpu::ShaderStages>) -> wgpu::BindGroupLayout {
     let mut entries = vec![];
 
     for i in 0..shader_stages.len() {
@@ -239,11 +269,7 @@ pub fn create_bind_group_layout(
     })
 }
 
-pub fn create_bind_group(
-    device: &wgpu::Device,
-    shader_stages: Vec<wgpu::ShaderStages>,
-    resources: &[wgpu::BindingResource<'_>]
-) -> ( wgpu::BindGroupLayout, wgpu::BindGroup) {
+pub fn create_bind_group(device: &wgpu::Device, shader_stages: Vec<wgpu::ShaderStages>, resources: &[wgpu::BindingResource<'_>]) -> ( wgpu::BindGroupLayout, wgpu::BindGroup) {
     let entries: Vec<_> = resources.iter().enumerate().map(|(i, resource)| {
         wgpu::BindGroupEntry {
             binding: i as u32,
@@ -261,7 +287,6 @@ pub fn create_bind_group(
     (layout, bind_group)
 }
 
-
 pub fn create_color_attachment<'a>(texture_view: &'a wgpu::TextureView) -> wgpu::RenderPassColorAttachment<'a> {
     wgpu::RenderPassColorAttachment {
         view: texture_view,
@@ -272,9 +297,6 @@ pub fn create_color_attachment<'a>(texture_view: &'a wgpu::TextureView) -> wgpu:
         },
     }
 }
-
-
-
 
 pub fn create_depth_view(init: &IWgpuInit) -> wgpu::TextureView {
     let depth_texture = init.device.create_texture(&wgpu::TextureDescriptor {
@@ -304,20 +326,6 @@ pub fn create_depth_stencil_attachment<'a>(depth_view: &'a wgpu::TextureView) ->
         }),
         stencil_ops: None,
     }
-}
-
-pub struct IRenderPipeline<'a> {
-    pub shader: Option<&'a wgpu::ShaderModule>,
-    pub vs_shader: Option<&'a wgpu::ShaderModule>,
-    pub fs_shader: Option<&'a wgpu::ShaderModule>,
-    pub vertex_buffer_layout: &'a [wgpu::VertexBufferLayout<'a>],
-    pub pipeline_layout: Option<&'a wgpu::PipelineLayout>,
-    pub topology: wgpu::PrimitiveTopology,
-    pub strip_index_format: Option<wgpu::IndexFormat>,
-    pub cull_mode: Option<wgpu::Face>,
-    pub is_depth_stencil: bool,
-    pub vs_entry: String,
-    pub fs_entry: String,
 }
 
 impl Default for IRenderPipeline<'_> {
@@ -383,18 +391,6 @@ impl IRenderPipeline<'_> {
             multiview: None,
         })
     }
-}
-
-
-pub struct IWgpuInit {
-    pub instance: wgpu::Instance,
-    pub surface: wgpu::Surface,
-    pub adapter: wgpu::Adapter,
-    pub device: wgpu::Device,
-    pub queue: wgpu::Queue,
-    pub config: wgpu::SurfaceConfiguration,
-    pub size: winit::dpi::PhysicalSize<u32>,
-    pub sample_count: u32,
 }
 
 impl IWgpuInit {
@@ -466,70 +462,6 @@ impl IWgpuInit {
     }
 }
 
-// region: utility
-/*pub struct FpsCounter {
-    fps: u32,
-    frame_count: u32,
-    last_frame_time: Instant,
-    fps_timer: Instant,
-    min_frame_time: Duration,
-    t0: Instant,
-}
-
-impl FpsCounter {
-    pub fn new() -> Self {
-        Self {
-            frame_count: 0,
-            fps: 0,
-            last_frame_time: Instant::now(),
-            fps_timer: Instant::now(),
-            t0: Instant::now(),
-            min_frame_time: Duration::from_secs(0),
-        }
-    }
-
-    pub fn calculate_fps(&mut self) -> (u32, f32) {
-        self.frame_count += 1;
-
-        let now = Instant::now();
-        let frame_time = now.duration_since(self.last_frame_time);
-        self.last_frame_time = now;
-
-        // Update the minimum frame time
-        if frame_time < self.min_frame_time || self.min_frame_time == Duration::from_secs(0) {
-            self.min_frame_time = frame_time;
-        }
-
-        let elapsed_time = self.fps_timer.elapsed();
-        if elapsed_time >= Duration::from_secs(1) {
-            self.fps = self.frame_count;
-            self.frame_count = 0;
-            self.fps_timer = Instant::now();
-
-            // Reset the minimum frame time at the start of each FPS calculation interval
-            self.min_frame_time = Duration::from_secs(0);
-        }
-        (self.fps, self.min_frame_time.as_secs_f32()*1000.0)
-    }
-
-    pub fn print_fps(&mut self, interval:u64) {
-        let elapsed_time = self.t0.elapsed();
-        let (fps, render_time) = self.calculate_fps();
-        if elapsed_time >= Duration::from_secs(interval) && render_time > 0.0 {
-            println!("FPS = {}, Rendering time = {}", fps, render_time);
-            self.t0 = Instant::now();
-        }
-    }
-}*/
-
-
-
-#[derive(Debug)]
-pub struct FpsCounter {
-    last_second_frames: VecDeque<Instant>,
-    last_print_time: Instant,
-}
-
 impl Default for FpsCounter {
     fn default() -> Self {
         Self::new()
@@ -563,39 +495,6 @@ impl FpsCounter {
             self.last_print_time = now;
         }
     }
-}
-
-
-pub fn round_to_multiple(any_number: u32, rounded_number: u32) -> u32 {
-    num::integer::div_ceil(any_number, rounded_number) * rounded_number
-}
-
-pub fn seed_random_number(seed:u64) -> f32 {
-    let mut rng: StdRng = SeedableRng::seed_from_u64(seed);
-    let distribution = Uniform::new(0.0, 1.0);
-    distribution.sample(&mut rng) as f32
-}
-
-// endregion: utility
-
-struct State {
-    init: IWgpuInit,
-    pipeline: wgpu::RenderPipeline,
-    vertex_buffer: wgpu::Buffer,
-    index_buffer: wgpu::Buffer,
-    uniform_bind_group: wgpu::BindGroup,
-    uniform_buffer: wgpu::Buffer,
-    model_mat: Matrix4<f32>,
-    view_mat: Matrix4<f32>,
-    project_mat: Matrix4<f32>,
-    depth_texture_view: wgpu::TextureView,
-    indices_lens: u32,
-    plot_type: u32,
-
-    terrain: surface::ITerrain,
-    update_buffers: bool,
-    aspect_ratio: f32,
-    fps_counter: FpsCounter,
 }
 
 impl State {
@@ -754,59 +653,25 @@ impl State {
                 },
                 ..
             } => match keycode {
-                VirtualKeyCode::Space => {
-                    self.plot_type = (self.plot_type + 1) % 3;
-                    true
-                }
-                VirtualKeyCode::Q => {
-                    self.terrain.scale += 1.0;
-                    self.update_buffers = true;
-                    println!("scale = {}", self.terrain.scale);
-                    true
-                }
-                VirtualKeyCode::A => {
-                    self.terrain.scale -= 1.0;
-                    if self.terrain.scale < 1.0 {
-                        self.terrain.scale = 1.0;
-                    }
-                    self.update_buffers = true;
-                    println!("scale = {}", self.terrain.scale);
-                    true
-                }
-                VirtualKeyCode::W => {
-                    self.terrain.octaves += 1;
-                    self.update_buffers = true;
-                    println!("octaves = {}", self.terrain.octaves);
-                    true
-                }
-                VirtualKeyCode::S => {
-                    self.terrain.octaves -= 1;
-                    if self.terrain.octaves < 1 {
-                        self.terrain.octaves = 1;
-                    }
-                    self.update_buffers = true;
-                    println!("octaves = {}", self.terrain.octaves);
-                    true
-                }
-                VirtualKeyCode::E => {
+                VirtualKeyCode::D => {
                     self.terrain.offsets[0] += 1.0;
                     self.update_buffers = true;
                     println!("offset_x = {}", self.terrain.offsets[0]);
                     true
                 }
-                VirtualKeyCode::D => {
+                VirtualKeyCode::A => {
                     self.terrain.offsets[0] -= 1.0;
                     self.update_buffers = true;
                     println!("offset_x = {}", self.terrain.offsets[0]);
                     true
                 }
-                VirtualKeyCode::R => {
+                VirtualKeyCode::S => {
                     self.terrain.offsets[1] += 1.0;
                     self.update_buffers = true;
                     println!("offset_z = {}", self.terrain.offsets[1]);
                     true
                 }
-                VirtualKeyCode::F => {
+                VirtualKeyCode::W => {
                     self.terrain.offsets[1] -= 1.0;
                     self.update_buffers = true;
                     println!("offset_z = {}", self.terrain.offsets[1]);
@@ -819,6 +684,30 @@ impl State {
                     true
                 }
                 VirtualKeyCode::G => {
+                    self.aspect_ratio -= 1.0;
+                    self.update_buffers = true;
+                    println!("aspect_ratio = {}", self.aspect_ratio);
+                    true
+                }
+                VirtualKeyCode::Up => {
+                    self.aspect_ratio -= 1.0;
+                    self.update_buffers = true;
+                    println!("aspect_ratio = {}", self.aspect_ratio);
+                    true
+                }
+                VirtualKeyCode::Down => {
+                    self.aspect_ratio -= 1.0;
+                    self.update_buffers = true;
+                    println!("aspect_ratio = {}", self.aspect_ratio);
+                    true
+                }
+                VirtualKeyCode::Left => {
+                    self.aspect_ratio -= 1.0;
+                    self.update_buffers = true;
+                    println!("aspect_ratio = {}", self.aspect_ratio);
+                    true
+                }
+                VirtualKeyCode::Right => {
                     self.aspect_ratio -= 1.0;
                     self.update_buffers = true;
                     println!("aspect_ratio = {}", self.aspect_ratio);
@@ -897,14 +786,20 @@ impl State {
         Ok(())
     }
 }
-/*
-#[repr(C)]
-#[derive(Copy, Clone, Debug, Pod, Zeroable)]
-pub struct CamPos{
-    pub x:f32,
-    pub y:f32,
-    pub z:f32
+
+pub fn round_to_multiple(any_number: u32, rounded_number: u32) -> u32 {
+    num::integer::div_ceil(any_number, rounded_number) * rounded_number
 }
+
+pub fn seed_random_number(seed:u64) -> f32 {
+    let mut rng: StdRng = SeedableRng::seed_from_u64(seed);
+    let distribution = Uniform::new(0.0, 1.0);
+    distribution.sample(&mut rng) as f32
+}
+
+
+/*
+
 
     pub fn plane_move(&mut self, moves: char) {
         match moves {

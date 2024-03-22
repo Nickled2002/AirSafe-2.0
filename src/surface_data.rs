@@ -68,11 +68,13 @@ impl ITerrain {
         let mut map :Vec<Vec<f32>> = vec![];
         let mut height_min = f32::MAX;
         let mut height_max = f32::MIN;
-        let worldmap: Tile = Tile::from_file("src/N03E021.hgt").unwrap();
+        let worldmap: Tile = Tile::from_file("src/S05E024.hgt").unwrap();
         for x in 0..width {
             let mut p1:Vec<f32> = vec![];
             for z in 0..height {
-                let y =  Tile::get(&worldmap, x , z ) as f32;
+                let usex = x as f32 + self.offsets[0];
+                let usez = z as f32 + self.offsets[1];
+                let y =  Tile::get(&worldmap, usex as u32, usez as u32) as f32;
                 height_min = if y < height_min { y } else { height_min };
                 height_max = if y > height_max { y } else { height_max };
                 p1.push(y);
@@ -145,6 +147,9 @@ impl ITerrain {
 
         self.color_lerp(color, ta, tt)
     }
+
+
+
     pub fn create_terrain_data_chunk(&mut self) -> (Vec<Vertex>, u32){
         let increment_count = if self.level_of_detail <= 5 { self.level_of_detail + 1} else { 2*(self.level_of_detail - 2)};
 
