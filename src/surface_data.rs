@@ -28,15 +28,15 @@ pub struct ITerrain {
 impl Default for ITerrain {
     fn default() -> Self {
         Self {
-            width: 3600,
-            height: 3600,
+            width: 100,
+            height: 100,
             octaves: 5,
             persistence: 0.5,
             lacunarity: 2.0,
             offsets: [0.0, 0.0],
             scale: 10.0,
             colormap_name: "mountain".to_string(),
-            chunk_size: 241,
+            chunk_size: 100,
             level_of_detail: 0,
             normalize_mode: "local".to_string(),
         }
@@ -44,8 +44,9 @@ impl Default for ITerrain {
 }
 
 impl ITerrain {
-    pub fn new() -> Self {
-        Default::default()
+
+    pub async fn new(&mut self) -> Self {
+        Self::default()
     }
 
 
@@ -68,7 +69,8 @@ impl ITerrain {
         let mut map :Vec<Vec<f32>> = vec![];
         let mut height_min = f32::MAX;
         let mut height_max = f32::MIN;
-        let worldmap: Tile = Tile::from_file("src/S05E024.hgt").unwrap();
+        let worldmap: Tile = Tile::from_file("src/Scotlandhgt/N54W004.hgt").unwrap();
+
         for x in 0..width {
             let mut p1:Vec<f32> = vec![];
             for z in 0..height {
@@ -94,6 +96,7 @@ impl ITerrain {
 
         map
     }
+
 
     pub fn create_terrain_data(&mut self) -> Vec<Vertex> {
         let cdata = colormap::colormap_data(&self.colormap_name);
