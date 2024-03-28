@@ -928,7 +928,7 @@ pub fn seed_random_number(seed:u64) -> f32 {
     }
 */
 
-pub fn runcpu( width: u32, height: u32, colormap_name: &str, ) {
+pub fn run( width: u32, height: u32, colormap_name: &str, ) {
     env_logger::init();
     let event_loop = EventLoop::new();
     let window = winit::window::WindowBuilder::new()
