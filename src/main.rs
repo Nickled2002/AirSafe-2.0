@@ -4,8 +4,8 @@ mod commongpu;
 
 fn main(){
 
-    let width = 1500;
-    let height = 1500;
+    let width = 200;
+    let height = 200;
     let colormap_name = "mountain";
     //let data: Tile = Tile::from_file("src/N03E021.hgt").unwrap();
     //create vertex data from common rs file and using the function from mathfunc.rs file
@@ -13,8 +13,8 @@ fn main(){
     //let light_data = common::light([1.0, 1.0, 1.0], 0.1, 0.8, 0.4, 30.0, 1);//1,1,1 for specular light color and set light intensity
     let run =1;
     if run ==1 {
-        common::runcpu(width, height, colormap_name);//create sinc surface now peaks
+        common::run(width, height, colormap_name);//create sinc surface now peaks
     }else {
-        common::rungpu()
+        commongpu::run()
     }
 }

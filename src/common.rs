@@ -12,15 +12,14 @@ use bytemuck::{cast_slice, Pod, Zeroable};
 use wgpu::VertexBufferLayout;
 use std::time::{Instant, Duration};
 use std::collections::VecDeque;
-use rand::{SeedableRng, rngs::StdRng,distributions::{Distribution, Uniform}};
+
 
 
 #[path="transforms.rs"]
 mod transforms;
 #[path="surface_data.rs"]
 mod surface;
-#[path="texture_data.rs"]
-mod texture;
+
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, Pod, Zeroable)]
@@ -654,112 +653,7 @@ fn create_compute_texture_bind_group_layout(device: &wgpu::Device) -> wgpu::Bind
     })
 }
 
-pub fn create_compute_texture_bind_group(device: &wgpu::Device, texture_view: &wgpu::TextureView) -> (wgpu::BindGroupLayout, wgpu::BindGroup) {
-    let layout = create_compute_texture_bind_group_layout(device);
-    let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor{
-        label: Some("Compute Texture Bind Group"),
-        layout: &layout,
-        entries: &[
-            wgpu::BindGroupEntry {
-                binding: 0,
-                resource: wgpu::BindingResource::TextureView(&texture_view),
-            }
-        ]
-    });
-    (layout, bind_group)
-}
 
-fn create_texture_bind_group_layout(device: &wgpu::Device, img_files:Vec<&str>) -> wgpu::BindGroupLayout {
-    let mut entries:Vec<wgpu::BindGroupLayoutEntry> = vec![];
-    for i in 0..img_files.len() {
-        entries.push( wgpu::BindGroupLayoutEntry {
-            binding: (2*i) as u32,
-            visibility: wgpu::ShaderStages::FRAGMENT,
-            ty: wgpu::BindingType::Texture {
-                multisampled: false,
-                view_dimension: wgpu::TextureViewDimension::D2,
-                sample_type: wgpu::TextureSampleType::Float { filterable: true },
-            },
-            count: None,
-        });
-        entries.push(wgpu::BindGroupLayoutEntry {
-            binding: (2*i+1) as u32,
-            visibility: wgpu::ShaderStages::FRAGMENT,
-            ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-            count: None,
-        })
-    }
-
-    device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-        entries: &entries,
-        label: Some("texture_bind_group_layout"),
-    })
-}
-
-pub fn create_texture_bind_group(device: &wgpu::Device, queue: &wgpu::Queue, img_files:Vec<&str>, u_mode:wgpu::AddressMode, v_mode:wgpu::AddressMode) -> (wgpu::BindGroupLayout, wgpu::BindGroup) {
-    let mut img_textures:Vec<texture::ITexture> = vec![];
-    let mut entries:Vec<wgpu::BindGroupEntry<'_>> = vec![];
-    for i in 0..img_files.len() {
-        img_textures.push(texture::ITexture::create_texture_data(device, queue, img_files[i], u_mode, v_mode).unwrap());
-    }
-    for i in 0..img_files.len() {
-        entries.push( wgpu::BindGroupEntry {
-            binding: (2*i) as u32,
-            resource: wgpu::BindingResource::TextureView(&img_textures[i].view),
-        });
-        entries.push( wgpu::BindGroupEntry {
-            binding: (2*i + 1) as u32,
-            resource: wgpu::BindingResource::Sampler(&img_textures[i].sampler),
-        })
-    }
-
-    let layout = create_texture_bind_group_layout(device, img_files);
-
-    let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor{
-        layout: &layout,
-        label: Some("texture_bind_group"),
-        entries: &entries
-    });
-    (layout, bind_group)
-}
-
-pub fn create_texture_store_bind_group(device: &wgpu::Device, store_texture: &texture::ITexture) -> (wgpu::BindGroupLayout, wgpu::BindGroup) {
-    let layout = create_texture_bind_group_layout(device, vec!["None"]);
-    let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor{
-        layout: &layout,
-        label: Some("texture_bind_group"),
-        entries: &[
-            wgpu::BindGroupEntry {
-                binding: 0,
-                resource: wgpu::BindingResource::TextureView(&store_texture.view),
-            },
-            wgpu::BindGroupEntry {
-                binding: 1,
-                resource: wgpu::BindingResource::Sampler(&store_texture.sampler),
-            },
-        ]
-    });
-    (layout, bind_group)
-}
-
-pub fn create_shadow_texture_view(init: &IWgpuInit, width:u32, height:u32) -> wgpu::TextureView {
-    let shadow_depth_texture = init.device.create_texture(&wgpu::TextureDescriptor {
-        size: wgpu::Extent3d {
-            width,
-            height,
-            depth_or_array_layers: 1,
-        },
-        mip_level_count: 1,
-        sample_count: init.sample_count,
-        dimension: wgpu::TextureDimension::D2,
-        format:wgpu::TextureFormat::Depth24Plus,
-        usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
-        label: None,
-        view_formats: &[],
-    });
-
-    shadow_depth_texture.create_view(&wgpu::TextureViewDescriptor::default())
-}
 
 pub fn create_bind_group_layout_storage(device: &wgpu::Device, shader_stages: Vec<wgpu::ShaderStages>, binding_types: Vec<wgpu::BufferBindingType>) -> wgpu::BindGroupLayout {
     let mut entries = vec![];
@@ -887,11 +781,6 @@ pub fn round_to_multiple(any_number: u32, rounded_number: u32) -> u32 {
     num::integer::div_ceil(any_number, rounded_number) * rounded_number
 }
 
-pub fn seed_random_number(seed:u64) -> f32 {
-    let mut rng: StdRng = SeedableRng::seed_from_u64(seed);
-    let distribution = Uniform::new(0.0, 1.0);
-    distribution.sample(&mut rng) as f32
-}
 
 
 /*
@@ -928,7 +817,7 @@ pub fn seed_random_number(seed:u64) -> f32 {
     }
 */
 
-pub fn runcpu( width: u32, height: u32, colormap_name: &str, ) {
+pub fn run( width: u32, height: u32, colormap_name: &str, ) {
     env_logger::init();
     let event_loop = EventLoop::new();
     let window = winit::window::WindowBuilder::new()
