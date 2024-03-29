@@ -16,6 +16,7 @@ struct TerrainParams{
     offsetZ: f32,   
     scale: f32,
     waterLevel: f32,
+    mapdata:vec2f,
 }
 
 @group(0) @binding(0) var<storage, read_write> vda : VertexDataArray;
@@ -55,16 +56,8 @@ fn cs_main(@builtin(global_invocation_id) id : vec3u){
         vec3(0.353, 0.302, 0.255),
         vec3(1.0, 0.98, 0.98)
     );
-     let cData2 = array<vec3<f32>,5>(
-        vec3(1.0),
-        vec3(1.0),
-        vec3(1.0),
-        vec3(1.0),
-        vec3(1.0),
-    );
     let ta = array<f32, 6>(0.0, 0.3, 0.35, 0.4, 0.7, 1.0);
     let color = addTerrainColors(cData, ta, 0.0, 1.0, p0.y, waterLevel);
-    let color2 = addTerrainColors(cData2, ta, 0.0, 1.0, p0.y, waterLevel);
 
     var idx = i + j * u32(tps.resolution);   
     vda.vertexDataArray[idx].position = vec4(p0, 1.0);

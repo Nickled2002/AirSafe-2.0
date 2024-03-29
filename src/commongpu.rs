@@ -1,6 +1,7 @@
-use bytemuck::cast_slice;
+use bytemuck::{cast_slice};
 use cgmath::Matrix4;
-use std::{f32::consts::PI, iter};
+use std:: iter;
+use srtm::Tile;
 use wgpu::{util::DeviceExt, VertexBufferLayout};
 
 use winit::{
@@ -15,6 +16,17 @@ use crate::common::CamPos;
 mod transforms;
 #[path="common.rs"]
 mod common;
+pub struct Params{
+    resolution: f32,
+    octaves: f32,
+    persistence: f32,
+    lacunarity: f32,
+    offsetX: f32,
+    offsetZ: f32,
+    scale: f32,
+    waterLevel: f32,
+    mapdata: Vec<Vec<f32>>,
+}
 struct State {
     init: common::IWgpuInit,
     pipeline: wgpu::RenderPipeline,
@@ -30,6 +42,7 @@ struct State {
     aspect_ratio: f32,
     update_buffers_view: bool,
     fps_counter: common::FpsCounter,
+    map:Vec<Vec<f32>>,
 
 
     cs_pipelines: Vec<wgpu::ComputePipeline>,
@@ -212,7 +225,20 @@ impl State {
             mapped_at_creation: false,
         });
 
+        let mapdata = State::find_world_map(54, 4);
+        let inputparams = Params{
+            resolution:resol as f32,
+            octaves:5.0,
+            persistence: 0.5,
+            lacunarity: 2.0,
+            offsetX: 0.0,
+            offsetZ: 0.0,
+            scale: 50.0,
+            waterLevel: 0.2,
+            mapdata,
 
+
+        };
         let params = [resol as f32, 5.0, 0.5, 2.0, 0.0, 0.0, 50.0, 0.2];
         let cs_vertex_uniform_buffer =
             init.device
@@ -271,7 +297,7 @@ impl State {
             view_mat,
             project_mat,
             depth_texture_view,
-
+            map:vec![],
             //terrain,
             camera,
             camlook,
@@ -480,7 +506,32 @@ impl State {
 
         Ok(())
     }
+    fn find_world_map(lat:u32,long:u32) -> Vec<Vec<f32>>{
+        let mut map: Vec<Vec<f32>> = vec![];
+        let mut height_min = f32::MAX;
+        let mut height_max = f32::MIN;
+        let worldmap: Tile = Tile::from_file("src/Scotlandhgt/N".to_owned() + &*lat.to_string() +"W00"+ &*long.to_string() +".hgt").unwrap();
+
+        for x in 0..3600 {
+            let mut p1:Vec<f32> = vec![];
+            for z in 0..3600 {
+                let y =  Tile::get(&worldmap, x as u32, z as u32) as f32;
+                height_min = if y < height_min { y } else { height_min };
+                height_max = if y > height_max { y } else { height_max };
+                p1.push(y);
+            }
+            map.push(p1);
+        }
+        for x in 0..3600 as usize {
+            for z in 0..3600 as usize {
+                map[x][z] = (map[x][z] - height_min)/(height_max - height_min);
+            }
+        }
+
+        map
+    }
 }
+
 
 pub fn run() {
     let mut sample_count = 1 as u32;
@@ -500,7 +551,7 @@ pub fn run() {
         .unwrap();
     window.set_title(&*format!("Honours"));
 
-    let mut state = pollster::block_on(State::new(&window, sample_count, resolution));
+    let mut state = pollster::block_on(State::new(&window, sample_count, resolution, ));
 
     event_loop.run(move |event, _, control_flow| match event {
         Event::WindowEvent {
