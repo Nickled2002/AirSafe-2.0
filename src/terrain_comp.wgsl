@@ -1,6 +1,7 @@
 struct VertexData{
     position: vec4f,
     color: vec4f,
+
 }
 
 struct VertexDataArray{
@@ -16,11 +17,13 @@ struct TerrainParams{
     offsetZ: f32,   
     scale: f32,
     waterLevel: f32,
-    mapdata:vec2f,
+    map: vec2f,
 }
+
 
 @group(0) @binding(0) var<storage, read_write> vda : VertexDataArray;
 @group(0) @binding(1) var<uniform> tps: TerrainParams;
+//@group(0) @binding(2) var<uniform> map: vecf;
 
 fn terrainFunc(x:f32, z:f32) -> f32 {
     let halfr = 0.5 * tps.resolution;
