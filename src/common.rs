@@ -12,6 +12,7 @@ use bytemuck::{cast_slice, Pod, Zeroable};
 use wgpu::VertexBufferLayout;
 use std::time::{Instant, Duration};
 use std::collections::VecDeque;
+use std::thread::sleep;
 
 
 
@@ -19,6 +20,8 @@ use std::collections::VecDeque;
 mod transforms;
 #[path="surface_data.rs"]
 mod surface;
+
+
 
 
 #[repr(C)]
@@ -267,17 +270,17 @@ impl State {
         let model_mat = transforms::create_transforms(
             [-0.65 * width as f32, 5.0, -0.5 * height as f32],
             [0.0, 0.0, 0.0],
-            [1.0, 10.0, 1.0],
+            [1.0, 100.0, 1.0],
         );
         let camera = CamPos{
             x:0.0,
-            y:20.0,
+            y:100.0,
             z:0.0,
         };
         let camlook = CamPos{
             x:0.0,
-            y:0.0,
-            z:-30.0,
+            y:100.0,
+            z:30.0,
         };
 
         let camera_position = (camera.x, camera.y, camera.z).into();
@@ -333,7 +336,6 @@ impl State {
         let depth_texture_view = create_depth_view(&init);
 
         let mut terrain = surface::ITerrain {
-            scale: 10.0,
             colormap_name: colormap_name.to_string(),
             width,
             height,
@@ -376,7 +378,7 @@ impl State {
             terrain,
             update_buffers: false,
             update_buffers_view: false,
-            aspect_ratio: 10.0,
+            aspect_ratio: 100.0,
             fps_counter: FpsCounter::default(),
         }
     }
@@ -405,43 +407,68 @@ impl State {
 
     pub fn plane_move(&mut self, moves: char) {
         match moves {
-            'n' => {
-
+            's' => {
+                if self.camlook.x < 120.0 {
+                    self.camlook.x += 3.0;
+                }else{
+                    self.camlook.x += 1.0;
+                }
                 self.camera.x += 1.0;
-                self.camlook.x += 1.0;
-                if self.camera.x == 30.0{
+                if self.camera.x == 125.0{
                     self.camera.x = 0.0;
-                    self.camlook.x = 0.0;
-                    self.terrain.offsets[0] += 30.0;
+                    self.camlook.x = 120.0;
+                    self.terrain.offsets[0] += 125.0;
                     self.update_buffers = true;
                 }else { self.update_buffers_view = true; }
             },
-            's' => {self.camera.x = self.camera.x-1.0;
-                self.camlook.x = self.camlook.x -1.0;
-                if self.camera.x == -30.0{
+            'n' => {
+                if self.camlook.x > -120.0 {
+                    self.camlook.x -= 3.0;
+                }else{
+                    self.camlook.x -= 1.0;
+                }
+                self.camera.x -= 1.0;
+                if self.camera.x == -125.0{
                     self.camera.x = 0.0;
-                    self.camlook.x = 0.0;
-                    self.terrain.offsets[0] -= 30.0;
+                    self.camlook.x = -120.0;
+                    self.terrain.offsets[0] -= 125.0;
                     self.update_buffers = true;
                 }else { self.update_buffers_view = true; }
 
             },
-            'e' => {self.camera.z +=1.0;
+            'w' => {if self.camlook.x<self.camera.x{
+                if self.camlook.x-self.camera.x>10.0{self.camlook.x += 3.0;}
+                self.camlook.x += 1.0;
+                }
+                if self.camlook.x>self.camera.x{
+                if self.camlook.x-self.camera.x>10.0{self.camlook.x -= 3.0;}
+                self.camlook.x -= 1.0;
+                }
+
+                self.camera.z +=1.0;
                     self.camlook.z +=1.0;
-                if self.camera.z == 30.0{
+                if self.camera.z == 125.0{
                     self.camera.z = 0.0;
-                    self.camlook.z = -30.0;
-                    self.terrain.offsets[1] += 30.0;
+                    self.camlook.z = 125.0;
+                    self.terrain.offsets[1] += 125.0;
                     self.update_buffers = true;
                 }else { self.update_buffers_view = true; }
                 },
-            'w' =>{
+            'e' =>{
+                if self.camlook.x<self.camera.x{
+                if self.camlook.x-self.camera.x>10.0{self.camlook.x -= 3.0;}
+                self.camlook.x -= 1.0;
+                }
+                if self.camlook.x>self.camera.x{
+                if self.camlook.x-self.camera.x>10.0{self.camlook.x += 3.0;}
+                self.camlook.x += 1.0;
+                }
                 self.camera.z -=1.0;
                 self.camlook.z -=1.0;
-                if self.camera.z == -30.0{
+                if self.camera.z == -125.0{
                     self.camera.z = 0.0;
-                    self.camlook.z = -30.0;
-                    self.terrain.offsets[1] -= 30.0;
+                    self.camlook.z = 125.0;
+                    self.terrain.offsets[1] -= 125.0;
                     self.update_buffers = true;
                 }else { self.update_buffers_view = true; }
 
@@ -855,6 +882,7 @@ pub fn run( width: u32, height: u32, colormap_name: &str, ) {
                     WindowEvent::ScaleFactorChanged { new_inner_size, .. } => {
                         state.resize(**new_inner_size);
                     }
+
                     _ => {}
                 }
             }

@@ -17,7 +17,7 @@ struct TerrainParams{
     offsetZ: f32,   
     scale: f32,
     waterLevel: f32,
-    map: vec2f,
+
 }
 
 

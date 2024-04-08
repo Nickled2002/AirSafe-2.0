@@ -16,17 +16,6 @@ use crate::common::CamPos;
 mod transforms;
 #[path="common.rs"]
 mod common;
-pub struct Params{
-    resolution: f32,
-    octaves: f32,
-    persistence: f32,
-    lacunarity: f32,
-    offsetX: f32,
-    offsetZ: f32,
-    scale: f32,
-    waterLevel: f32,
-    mapdata: Vec<Vec<f32>>,
-}
 struct State {
     init: common::IWgpuInit,
     pipeline: wgpu::RenderPipeline,
@@ -225,7 +214,6 @@ impl State {
             mapped_at_creation: false,
         });
 
-        let mapdata = State::find_world_map(54, 4);
 
         let params = [resol as f32, 5.0, 0.5, 2.0, 0.0, 0.0, 50.0, 0.2];
         let cs_vertex_uniform_buffer =
