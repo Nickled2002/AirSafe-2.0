@@ -140,7 +140,7 @@ impl State {
         let vertex_buffer_layout = VertexBufferLayout {
             array_stride: 32,
             step_mode: wgpu::VertexStepMode::Vertex,
-            attributes: &wgpu::vertex_attr_array![0 => Float32x4, 1 => Float32x4], // pos, col
+            attributes: &wgpu::vertex_attr_array![0 => Float32x4, 1 => Float32x4], //pos, col,
         };
 
         let pipeline_layout = init
@@ -226,19 +226,7 @@ impl State {
         });
 
         let mapdata = State::find_world_map(54, 4);
-        let inputparams = Params{
-            resolution:resol as f32,
-            octaves:5.0,
-            persistence: 0.5,
-            lacunarity: 2.0,
-            offsetX: 0.0,
-            offsetZ: 0.0,
-            scale: 50.0,
-            waterLevel: 0.2,
-            mapdata,
 
-
-        };
         let params = [resol as f32, 5.0, 0.5, 2.0, 0.0, 0.0, 50.0, 0.2];
         let cs_vertex_uniform_buffer =
             init.device
