@@ -12,30 +12,28 @@ pub struct Vertex {
 }
 
 pub struct ITerrain {
-    pub width: u32,
-    pub height: u32,
     pub offsets: [f32; 2],
-    pub colormap_name: String,
+    pub moves: [f32; 2],
     pub level_of_detail: u32,
     pub water_level: f32,
     pub mapdata: Vec<Vec<f32>>,
     pub mapdata2: Vec<Vec<f32>>,
     pub done :u32,
+    pub chunksize:u32,
 }
 
 impl Default for ITerrain {
 
     fn default() -> Self {
         Self {
-            width: 3600,
-            height: 3600,
             offsets: [0.0, 0.0],
-            colormap_name: "mountain".to_string(),
-            level_of_detail: 1000,
+            moves:[600.0,600.0],
+            level_of_detail: 5,
             water_level: 0.1,
             mapdata: vec![],
             mapdata2: vec![],
             done:0,
+            chunksize:241,
         }
     }
 }
@@ -65,7 +63,7 @@ impl ITerrain {
     pub fn find_world_map(&mut self) {
         let mut height_min = f32::MAX;
         let mut height_max = f32::MIN;
-        let worldmap: Tile = Tile::from_file("src/Scotlandhgt/N56W003.hgt").unwrap();
+        let worldmap: Tile = Tile::from_file("src/Scotlandhgt/N55W005.hgt").unwrap();
 
         for x in 0..3600 {
             let mut p1:Vec<f32> = vec![];
@@ -84,7 +82,7 @@ impl ITerrain {
             }
         }
     }
-    fn color_lerp(&mut self, color:&Vec<[f32;3]>, ta:&Vec<f32>, t:f32) -> [f32;3] {
+    fn color_interp(&mut self, color:&Vec<[f32;3]>, ta:&Vec<f32>, t:f32) -> [f32;3] {
         let len = 6usize;
         let mut res = [0f32;3];
         for i in 0..len - 1 {
@@ -102,7 +100,7 @@ impl ITerrain {
         let mut tt = if t < tmin { tmin } else if t > tmax { tmax } else { t };
         tt = (tt - tmin)/(tmax - tmin);
         let t1 = self.shift_water_level(ta);
-        self.color_lerp(color, &t1, tt)
+        self.color_interp(color, &t1, tt)
     }
     fn shift_water_level(&mut self, ta:&Vec<f32>) -> Vec<f32> {
         let mut t1 = vec![0f32; 6];
@@ -115,7 +113,10 @@ impl ITerrain {
         t1
     }
 
-    pub fn create_terrain_data(&mut self) -> Vec<Vertex> {
+
+    pub fn create_terrain_data(&mut self) -> (Vec<Vertex>, u32) {
+        let increment_count = if self.level_of_detail <= 5 { self.level_of_detail + 1} else { 2*(self.level_of_detail - 2)};
+        let vertices_per_row = (self.chunksize - 1)/increment_count + 1;
         let cdata =  vec![
             [0.055f32, 0.529, 0.8],
             [0.761, 0.698, 0.502],
@@ -131,10 +132,10 @@ impl ITerrain {
         }
         let mut data:Vec<Vertex> = vec![];
 
-        for x in 0..self.width as usize {
-            for z in 0..self.height as usize {
-                let usex = x as f32 + self.offsets[0];
-                let usez = z as f32 + self.offsets[1];
+        for x in (0..self.chunksize as usize).step_by(increment_count as usize) {
+            for z in (0..self.chunksize as usize).step_by(increment_count as usize) {
+                let usex = x as f32 + self.offsets[0] + self.moves[0];
+                let usez = z as f32 + self.offsets[1] + self.moves[1];
                 let mut y = self.mapdata[usex as usize][usez as usize] ;
                 if y < self.water_level {
                     y = self.water_level - 0.01;
@@ -146,7 +147,23 @@ impl ITerrain {
                 data.push(Vertex { position, color });
             }
         }
-        data
+    (data,vertices_per_row)
+    }
+    pub fn create_collection_of_terrain_data(&mut self, x_chunks:u32, z_chunks:u32, translations:&Vec<[f32;2]>) -> (Vec<Vec<Vertex>>, u32) {
+        let mut data:Vec<Vec<Vertex>> = vec![];
+        let mut vertices_per_row = 0u32;
+
+        let mut k:u32 = 0;
+        for _i in 0..x_chunks {
+            for _j in 0..z_chunks {
+                self.offsets = translations[k as usize];
+                let dd = self.create_terrain_data();
+                data.push(dd.0);
+                vertices_per_row = dd.1;
+                k += 1;
+            }
+        }
+        (data, vertices_per_row)
     }
 
 

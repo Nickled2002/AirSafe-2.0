@@ -1,5 +1,12 @@
 // vertex shader
-@binding(0) @group(0) var<uniform> mvp_mat : mat4x4f;
+@binding(0) @group(0) var<uniform> vpMat: mat4x4f; //separate view projection matrix and model matrix
+@group(0) @binding(1)  var<storage> modelMat: array<mat4x4f>;
+
+struct Input {
+    @builtin(instance_index) idx: u32, // added index
+    @location(0) position: vec4f,
+    @location(1) color: vec4f
+};
 
 struct Output {
     @builtin(position) position : vec4f,
@@ -7,10 +14,10 @@ struct Output {
 };
 
 @vertex
-fn vs_main(@location(0) pos: vec4f, @location(1) color: vec4f) -> Output {
+fn vs_main(in:Input) -> Output {
     var output: Output;
-    output.position = mvp_mat * pos;
-    output.vColor = color;
+    output.position = vpMat * modelMat[in.idx] * in.position;
+    output.vColor = in.color;
     return output;
 }
 
