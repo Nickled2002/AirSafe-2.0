@@ -19,11 +19,15 @@ struct TerrainParams{
     waterLevel: f32,
 
 }
+struct mapdata{
+    mapdata: vec2<f32>,
+
+}
 
 
 @group(0) @binding(0) var<storage, read_write> vda : VertexDataArray;
 @group(0) @binding(1) var<uniform> tps: TerrainParams;
-//@group(0) @binding(2) var<uniform> map: vecf;
+@group(0) @binding(2) var<uniform> map: mapdata;
 
 fn terrainFunc(x:f32, z:f32) -> f32 {
     let halfr = 0.5 * tps.resolution;

@@ -1,7 +1,5 @@
 mod common;
 mod commongpu;
-use srtm::Tile;
-
 
 fn main(){
 

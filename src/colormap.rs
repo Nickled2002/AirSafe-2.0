@@ -1,4 +1,5 @@
 #![allow(dead_code)]
+///NOT USED ANYMORE
 pub fn color_interp(colors:[[f32;3];11], min:f32, max:f32, mut t:f32) -> [f32; 3]{
     if t < min {
         t = min;

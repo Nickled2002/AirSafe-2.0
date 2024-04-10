@@ -2,7 +2,7 @@
 use bytemuck:: {Pod, Zeroable};
 use srtm::Tile;
 
-mod colormap;
+//mod colormap;
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, Pod, Zeroable)]
@@ -17,6 +17,7 @@ pub struct ITerrain {
     pub offsets: [f32; 2],
     pub colormap_name: String,
     pub level_of_detail: u32,
+    pub water_level: f32,
     pub mapdata: Vec<Vec<f32>>,
     pub mapdata2: Vec<Vec<f32>>,
     pub done :u32,
@@ -31,6 +32,7 @@ impl Default for ITerrain {
             offsets: [0.0, 0.0],
             colormap_name: "mountain".to_string(),
             level_of_detail: 1000,
+            water_level: 0.1,
             mapdata: vec![],
             mapdata2: vec![],
             done:0,
@@ -82,10 +84,46 @@ impl ITerrain {
             }
         }
     }
+    fn color_lerp(&mut self, color:&Vec<[f32;3]>, ta:&Vec<f32>, t:f32) -> [f32;3] {
+        let len = 6usize;
+        let mut res = [0f32;3];
+        for i in 0..len - 1 {
+            if t >= ta[i] && t < ta[i + 1] {
+                res = color[i];
+            }
+        }
+        if t == ta[len-1] {
+            res = color[len-2];
+        }
+        res
+    }
 
+    fn add_terrain_colors(&mut self, color:&Vec<[f32;3]>, ta:&Vec<f32>, tmin:f32, tmax:f32, t:f32) -> [f32;3] {
+        let mut tt = if t < tmin { tmin } else if t > tmax { tmax } else { t };
+        tt = (tt - tmin)/(tmax - tmin);
+        let t1 = self.shift_water_level(ta);
+        self.color_lerp(color, &t1, tt)
+    }
+    fn shift_water_level(&mut self, ta:&Vec<f32>) -> Vec<f32> {
+        let mut t1 = vec![0f32; 6];
+        let r = (1.0 - self.water_level)/(1.0 - ta[1]);
+        t1[1] = self.water_level;
+        for i in 1..5usize {
+            let del = ta[i+1] - ta[i];
+            t1[i+1] = t1[i] + r * del;
+        }
+        t1
+    }
 
     pub fn create_terrain_data(&mut self) -> Vec<Vertex> {
-        let cdata = colormap::colormap_data(&self.colormap_name);
+        let cdata =  vec![
+            [0.055f32, 0.529, 0.8],
+            [0.761, 0.698, 0.502],
+            [0.204, 0.549, 0.192],
+            [0.353, 0.302, 0.255],
+            [1.0, 0.98, 0.98]
+        ];
+        let ta = vec![0.0f32, 0.3, 0.35, 0.6, 0.9, 1.0];
 
         if self.done == 0 {
             self.find_world_map();
@@ -97,10 +135,13 @@ impl ITerrain {
             for z in 0..self.height as usize {
                 let usex = x as f32 + self.offsets[0];
                 let usez = z as f32 + self.offsets[1];
-                let y = self.mapdata[usex as usize][usez as usize] ;
+                let mut y = self.mapdata[usex as usize][usez as usize] ;
+                if y < self.water_level {
+                    y = self.water_level - 0.01;
+                }
                 //let y=0.0;
                 let position = [x as f32, y, z as f32];
-                let color = colormap::color_interp(cdata, 0.0, 1.0, y);
+                let color = self.add_terrain_colors(&cdata, &ta, 0.0, 1.0, y);
 
                 data.push(Vertex { position, color });
             }
