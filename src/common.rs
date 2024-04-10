@@ -20,9 +20,8 @@ mod transforms;
 #[path="surface_data.rs"]
 mod surface;
 
-const X_CHUNKS_COUNT: u32 = 4;
-const Z_CHUNKS_COUNT: u32 = 4;
-const CHUNKS_COUNT: u32 = 16;
+const X_CHUNKS_COUNT: u32 = 10;
+const Z_CHUNKS_COUNT: u32 = 10;
 
 
 
@@ -67,7 +66,7 @@ pub struct FpsCounter {
 struct State {
     init: IWgpuInit,
     pipeline: wgpu::RenderPipeline,
-    vertex_buffer: wgpu::Buffer,
+    vertex_buffer: Vec<wgpu::Buffer>,
     index_buffer: wgpu::Buffer,
     uniform_bind_group: wgpu::BindGroup,
     uniform_buffer: wgpu::Buffer,
@@ -77,11 +76,10 @@ struct State {
     index_length: u32,
     camera: CamPos,
     camlook: CamPos,
-
+    translations: Vec<[f32; 2]>,
     terrain: surface::ITerrain,
     update_buffers: bool,
     update_buffers_view: bool,
-    aspect_ratio: f32,
     fps_counter: FpsCounter,
 }
 
@@ -247,9 +245,7 @@ impl FpsCounter {
 impl State {
     async fn new(
         window: &Window,
-        width: u32,
-        height: u32,
-        colormap_name: &str,
+
     ) -> Self {
         let init = IWgpuInit::new(&window,1, None).await;
 
@@ -273,24 +269,18 @@ impl State {
             y:200.0,
             z:30.0,
         };
-        let mut terrain = surface::ITerrain {
-            colormap_name: colormap_name.to_string(),
-            width,
-            height,
-            ..Default::default()
-        };
-
-        let vertex_data = terrain.create_terrain_data();
-        let index_data = terrain.create_indices(vertex_data.1, vertex_data.1);
+        let mut terrain = surface::ITerrain::default();
+        let mut translations: Vec<[f32; 2]> = vec![];
         let mut model_mat: Vec<[f32; 16]> = vec![];
-        let chunk_size1 = (terrain.width - 1) as f32;
+        let chunk_size1 = (terrain.chunksize - 1) as f32;
         for i in 0..X_CHUNKS_COUNT {
             for j in 0..Z_CHUNKS_COUNT {
                 let xt = -0.5 * X_CHUNKS_COUNT as f32 * chunk_size1 + i as f32 * chunk_size1;
                 let zt = -0.5 * Z_CHUNKS_COUNT as f32 * chunk_size1 + j as f32 * chunk_size1;
-                let translation = [xt, 100.0, zt];
-                let m = transforms::create_transforms(translation, [0.0, 0.0, 0.0], [1.0, 100.0, 1.0]);
+                let translation = [xt, 10.0, zt];
+                let m = transforms::create_transforms(translation, [0.0, 0.0, 0.0], [1.0, 150.0, 1.0]);
                 model_mat.push(*(m.as_ref()));
+                translations.push([xt, zt]);
             }
         }
         let model_storage_buffer =
@@ -360,8 +350,28 @@ impl State {
 
         let depth_texture_view = create_depth_view(&init);
 
-
-
+        let vertex_data = terrain.create_collection_of_terrain_data(
+            X_CHUNKS_COUNT,
+            Z_CHUNKS_COUNT,
+            &translations,
+        );
+        let index_data = terrain.create_indices(vertex_data.1, vertex_data.1);
+        let mut vertex_buffer: Vec<wgpu::Buffer> = vec![];
+        let mut k: usize = 0;
+        for _i in 0..X_CHUNKS_COUNT {
+            for _j in 0..Z_CHUNKS_COUNT {
+                let vb = init
+                    .device
+                    .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                        label: Some("Vertex Buffer"),
+                        contents: cast_slice(&vertex_data.0[k]),
+                        usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+                    });
+                vertex_buffer.push(vb);
+                k += 1;
+            }
+        }
+        /*
         let vertex_buffer = init
             .device
             .create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -369,7 +379,7 @@ impl State {
                 contents: cast_slice(&vertex_data.0),
                 usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
             });
-
+        */
         let index_buffer = init
             .device
             .create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -392,10 +402,10 @@ impl State {
             index_length: index_data.len() as u32,
             camera,
             camlook,
+            translations,
             terrain,
             update_buffers: false,
             update_buffers_view: false,
-            aspect_ratio: 100.0,
             fps_counter: FpsCounter::default(),
         }
     }
@@ -425,69 +435,78 @@ impl State {
     pub fn plane_move(&mut self, moves: char) {
         match moves {
             's' => {
-                if self.camlook.x < 120.0 {
+                /*if self.camlook.x < 120.0 {
                     self.camlook.x += 3.0;
-                }else{
-                    self.camlook.x += 1.0;
-                }
-                self.camera.x += 1.0;
-                if self.camera.x == 125.0{
-                    self.camera.x = 0.0;
-                    self.camlook.x = 120.0;
-                    self.terrain.offsets[0] += 125.0;
+                }*/
+                    self.terrain.moves[0] += 1.0;
                     self.update_buffers = true;
-                }else { self.update_buffers_view = true; }
             },
-            'n' => {
+            'n' => {/*
                 if self.camlook.x > -120.0 {
                     self.camlook.x -= 3.0;
-                }else{
-                    self.camlook.x -= 1.0;
-                }
-                self.camera.x -= 1.0;
-                if self.camera.x == -125.0{
-                    self.camera.x = 0.0;
-                    self.camlook.x = -120.0;
-                    self.terrain.offsets[0] -= 125.0;
+                }*/
+                    self.terrain.moves[0] -= 1.0;
                     self.update_buffers = true;
-                }else { self.update_buffers_view = true; }
 
             },
-            'w' => {if self.camlook.x<self.camera.x{
-                if self.camlook.x-self.camera.x>10.0{self.camlook.x += 3.0;}
+            'w' => {/*if self.camlook.z == 30.0{if self.camlook.x<0.0{
+                if self.camlook.x< -10.0{self.camlook.x += 3.0;}
                 self.camlook.x += 1.0;
                 }
-                if self.camlook.x>self.camera.x{
-                if self.camlook.x-self.camera.x>10.0{self.camlook.x -= 3.0;}
+                if self.camlook.x>0.0{
+                if self.camlook.x> 10.0{self.camlook.x -= 3.0;}
                 self.camlook.x -= 1.0;
+                }}
+                if self.camlook.z == -30.0{
+                if self.camlook.x<0.0 {
+                if self.camlook.x > -120.0 {
+                    self.camlook.x -= 3.0;
                 }
+                if self.camlook.x < -119.0{
+                    self.camlook.z = 30.0;
+                    self.camlook.x =-120.0;
+                }}if self.camlook.x>0.0 {
+                if self.camlook.x < 120.0 {
+                    self.camlook.x += 3.0;
+                }
+                if self.camlook.x > 119.0 {
+                    self.camlook.z = 30.0;
+                    self.camlook.x = 120.0;
+                }
+                }}*/
+                    self.terrain.moves[1] += 1.0;
+                    self.update_buffers = true;
 
-                self.camera.z +=1.0;
-                    self.camlook.z +=1.0;
-                if self.camera.z == 125.0{
-                    self.camera.z = 0.0;
-                    self.camlook.z = 125.0;
-                    self.terrain.offsets[1] += 125.0;
-                    self.update_buffers = true;
-                }else { self.update_buffers_view = true; }
                 },
-            'e' =>{
-                if self.camlook.x<self.camera.x{
-                if self.camlook.x-self.camera.x>10.0{self.camlook.x -= 3.0;}
-                self.camlook.x -= 1.0;
+            'e' =>{/*if self.camlook.z == 30.0{
+                if self.camlook.x<0.0 {
+                if self.camlook.x > -120.0 {
+                    self.camlook.x -= 3.0;
                 }
-                if self.camlook.x>self.camera.x{
-                if self.camlook.x-self.camera.x>10.0{self.camlook.x += 3.0;}
+                if self.camlook.x < -119.0{
+                    self.camlook.z = -30.0;
+                    self.camlook.x =-120.0;
+                }}if self.camlook.x>0.0 {
+                if self.camlook.x < 120.0 {
+                    self.camlook.x += 3.0;
+                }
+                if self.camlook.x > 119.0 {
+                    self.camlook.z = -30.0;
+                    self.camlook.x = 120.0;
+                }
+                }}
+                if self.camlook.z == -30.0{
+                if self.camlook.x<0.0{
+                if self.camlook.x< -10.0{self.camlook.x += 3.0;}
                 self.camlook.x += 1.0;
                 }
-                self.camera.z -=1.0;
-                self.camlook.z -=1.0;
-                if self.camera.z == -125.0{
-                    self.camera.z = 0.0;
-                    self.camlook.z = 125.0;
-                    self.terrain.offsets[1] -= 125.0;
+                if self.camlook.x>0.0{
+                if self.camlook.x> 10.0{self.camlook.x -= 3.0;}
+                self.camlook.x -= 1.0;
+                }
+            }*/
+                    self.terrain.moves[1] -= 1.0;
                     self.update_buffers = true;
-                }else { self.update_buffers_view = true; }
 
             },
             'u' => self.camera.y = self.camera.y+1.0,
@@ -522,76 +541,40 @@ impl State {
                 },
                 ..
             } => match keycode {
-                VirtualKeyCode::D => {
-                    self.terrain.offsets[0] += 1.0;
-                    self.update_buffers = true;
-                    println!("offset_x = {}", self.terrain.offsets[0]);
-                    true
-                }
-                VirtualKeyCode::A => {
-                    self.terrain.offsets[0] -= 1.0;
-                    self.update_buffers = true;
-                    println!("offset_x = {}", self.terrain.offsets[0]);
-                    true
-                }
-                VirtualKeyCode::S => {
-                    self.terrain.offsets[1] += 1.0;
-                    self.update_buffers = true;
-                    println!("offset_z = {}", self.terrain.offsets[1]);
-                    true
-                }
                 VirtualKeyCode::W => {
-                    self.terrain.offsets[1] -= 1.0;
-                    self.update_buffers = true;
-                    println!("offset_z = {}", self.terrain.offsets[1]);
-                    true
-                }
-                VirtualKeyCode::T => {
-                    self.aspect_ratio += 1.0;
-                    self.update_buffers = true;
-                    println!("aspect_ratio = {}", self.aspect_ratio);
-                    true
-                }
-                VirtualKeyCode::G => {
-                    self.aspect_ratio -= 1.0;
-                    self.update_buffers = true;
-                    println!("aspect_ratio = {}", self.aspect_ratio);
-                    true
-                }
-                VirtualKeyCode::Up => {
                     self.plane_move('w');
                     true
                 }
-                VirtualKeyCode::Down => {
+                VirtualKeyCode::S => {
                     self.plane_move('e');
                     true
                 }
-                VirtualKeyCode::Left => {
+                VirtualKeyCode::A => {
                     self.plane_move('s');
                     true
                 }
-                VirtualKeyCode::Right => {
+                VirtualKeyCode::D => {
                     self.plane_move('n');
                     true
                 }
                 VirtualKeyCode::PageUp => {
                     self.plane_move('u');
-                    self.update_buffers_view = true;
+                    self.update_buffers= true;
                     true
                 }
                 VirtualKeyCode::PageDown => {
                     self.plane_move('d');
-                    self.update_buffers_view = true;
+                    self.update_buffers= true;
                     true
                 }
                 VirtualKeyCode::Q => {
                     self.plane_move('r');
-                    self.update_buffers_view = true;
+                    self.update_buffers = true;
                     true
                 }
                 VirtualKeyCode::E => {
                     self.plane_move('f');
-                    self.update_buffers_view = true;
+                    self.update_buffers = true;
                     true
                 }
                 _ => false,
@@ -603,25 +586,34 @@ impl State {
     fn update(&mut self) {
         // update buffers:
         if self.update_buffers {
-            let vertex_data = self.terrain.create_terrain_data();
-            self.init
-                .queue
-                .write_buffer(&self.vertex_buffer, 0, cast_slice(&vertex_data.0));
-            let index_data = self.terrain.create_indices(vertex_data.1, vertex_data.1);
-            self.init
-                .queue
-                .write_buffer(&self.index_buffer, 0, cast_slice(&index_data));
-            self.index_length = index_data.len() as u32;
-            self.update_buffers = false;
-        }
-        if self.update_buffers_view {
+            let vertex_data = self.terrain.create_collection_of_terrain_data(
+            X_CHUNKS_COUNT,
+            Z_CHUNKS_COUNT,
+            &self.translations,
+        );
+            let mut k = 0usize;
+            for _i in 0..X_CHUNKS_COUNT {
+                for _j in 0..Z_CHUNKS_COUNT {
+                    self.init.queue.write_buffer(
+                        &self.vertex_buffer[k],
+                        0,
+                        cast_slice(&vertex_data.0[k]),
+                    );
+                    k += 1;
+                }
+            }
             let vp_mat = self.project_mat * self.view_mat;
             self.init.queue.write_buffer(
                 &self.uniform_buffer,
                 0,
                 cast_slice(vp_mat.as_ref() as &[f32; 16]),
             );
-            self.update_buffers_view = false;
+            let index_data = self.terrain.create_indices(vertex_data.1, vertex_data.1);
+            self.init
+                .queue
+                .write_buffer(&self.index_buffer, 0, cast_slice(&index_data));
+            self.index_length = index_data.len() as u32;
+            self.update_buffers = false;
         }
     }
 
@@ -649,13 +641,21 @@ impl State {
                 depth_stencil_attachment: Some(depth_attachment),
             });
 
-
             render_pass.set_pipeline(&self.pipeline);
-            render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
-            render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
             render_pass.set_bind_group(0, &self.uniform_bind_group, &[]);
-            render_pass.draw_indexed(0..self.index_length, 0, 0..CHUNKS_COUNT);
 
+                let mut k: u32 = 0;
+                for _i in 0..X_CHUNKS_COUNT {
+                    for _j in 0..Z_CHUNKS_COUNT {
+                        render_pass.set_vertex_buffer(0, self.vertex_buffer[k as usize].slice(..));
+                        render_pass.set_index_buffer(
+                            self.index_buffer.slice(..),
+                            wgpu::IndexFormat::Uint32,
+                        );
+                        render_pass.draw_indexed(0..self.index_length, 0, k..k + 1);
+                        k += 1;
+                    }
+                }
         }
 
         self.fps_counter.print_fps(5);
@@ -789,7 +789,7 @@ pub fn create_depth_stencil_attachment<'a>(depth_view: &'a wgpu::TextureView) ->
     }
 }
 
-pub fn run( width: u32, height: u32, colormap_name: &str, ) {
+pub fn run() {
     env_logger::init();
     let event_loop = EventLoop::new();
     let window = winit::window::WindowBuilder::new()
@@ -799,9 +799,6 @@ pub fn run( width: u32, height: u32, colormap_name: &str, ) {
 
     let mut state = pollster::block_on(State::new(
         &window,
-        width,
-        height,
-        colormap_name,
     ));
 
     event_loop.run(move |event, _, control_flow| match event {
