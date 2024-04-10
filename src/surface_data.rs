@@ -31,7 +31,7 @@ impl Default for ITerrain {
             height: 3600,
             offsets: [0.0, 0.0],
             colormap_name: "mountain".to_string(),
-            level_of_detail: 1000,
+            level_of_detail: 0,
             water_level: 0.1,
             mapdata: vec![],
             mapdata2: vec![],
@@ -84,7 +84,7 @@ impl ITerrain {
             }
         }
     }
-    fn color_lerp(&mut self, color:&Vec<[f32;3]>, ta:&Vec<f32>, t:f32) -> [f32;3] {
+    fn color_interp(&mut self, color:&Vec<[f32;3]>, ta:&Vec<f32>, t:f32) -> [f32;3] {
         let len = 6usize;
         let mut res = [0f32;3];
         for i in 0..len - 1 {
@@ -102,7 +102,7 @@ impl ITerrain {
         let mut tt = if t < tmin { tmin } else if t > tmax { tmax } else { t };
         tt = (tt - tmin)/(tmax - tmin);
         let t1 = self.shift_water_level(ta);
-        self.color_lerp(color, &t1, tt)
+        self.color_interp(color, &t1, tt)
     }
     fn shift_water_level(&mut self, ta:&Vec<f32>) -> Vec<f32> {
         let mut t1 = vec![0f32; 6];
@@ -115,7 +115,10 @@ impl ITerrain {
         t1
     }
 
-    pub fn create_terrain_data(&mut self) -> Vec<Vertex> {
+
+    pub fn create_terrain_data(&mut self) -> (Vec<Vertex>, u32) {
+        let increment_count = if self.level_of_detail <= 5 { self.level_of_detail + 1} else { 2*(self.level_of_detail - 2)};
+        let vertices_per_row = (self.width - 1)/increment_count + 1;
         let cdata =  vec![
             [0.055f32, 0.529, 0.8],
             [0.761, 0.698, 0.502],
@@ -131,8 +134,8 @@ impl ITerrain {
         }
         let mut data:Vec<Vertex> = vec![];
 
-        for x in 0..self.width as usize {
-            for z in 0..self.height as usize {
+        for x in (0..self.width as usize).step_by(increment_count as usize) {
+            for z in (0..self.height as usize).step_by(increment_count as usize) {
                 let usex = x as f32 + self.offsets[0];
                 let usez = z as f32 + self.offsets[1];
                 let mut y = self.mapdata[usex as usize][usez as usize] ;
@@ -146,7 +149,7 @@ impl ITerrain {
                 data.push(Vertex { position, color });
             }
         }
-        data
+    (data,vertices_per_row)
     }
 
 

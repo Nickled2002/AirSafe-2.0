@@ -72,7 +72,7 @@ struct State {
     view_mat: Matrix4<f32>,
     project_mat: Matrix4<f32>,
     depth_texture_view: wgpu::TextureView,
-    indices_lens: u32,
+    index_lenght: u32,
     camera: CamPos,
     camlook: CamPos,
 
@@ -341,13 +341,13 @@ impl State {
             ..Default::default()
         };
         let vertex_data = terrain.create_terrain_data();
-        let index_data = terrain.create_indices(width, height);
+        let index_data = terrain.create_indices(vertex_data.1, vertex_data.1);
 
         let vertex_buffer = init
             .device
             .create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some("Vertex Buffer"),
-                contents: cast_slice(&vertex_data),
+                contents: cast_slice(&vertex_data.0),
                 usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
             });
 
@@ -371,7 +371,7 @@ impl State {
             view_mat,
             project_mat,
             depth_texture_view,
-            indices_lens: index_data.len() as u32,
+            index_lenght: index_data.len() as u32,
             camera,
             camlook,
             terrain,
@@ -604,7 +604,12 @@ impl State {
             let vertex_data = self.terrain.create_terrain_data();
             self.init
                 .queue
-                .write_buffer(&self.vertex_buffer, 0, cast_slice(&vertex_data));
+                .write_buffer(&self.vertex_buffer, 0, cast_slice(&vertex_data.0));
+            let index_data = self.terrain.create_indices(vertex_data.1, vertex_data.1);
+            self.init
+                .queue
+                .write_buffer(&self.index_buffer, 0, cast_slice(&index_data));
+            self.index_lenght = index_data.len() as u32;
             self.update_buffers = false;
         }
         if self.update_buffers_view {
@@ -647,7 +652,7 @@ impl State {
             render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
             render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
             render_pass.set_bind_group(0, &self.uniform_bind_group, &[]);
-            render_pass.draw_indexed(0..self.indices_lens, 0, 0..1);
+            render_pass.draw_indexed(0..self.index_lenght, 0, 0..1);
 
         }
 
