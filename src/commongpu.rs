@@ -53,11 +53,13 @@ struct State {
 
 }
 
+
 impl State {
     async fn new(window: &Window, sample_count: u32, resolution: u32) -> Self {
         let init = common::IWgpuInit::new(&window, sample_count, None).await;
 
-        let resol = common::round_to_multiple(resolution, 8);
+
+        let resol = num::integer::div_ceil(resolution, 8) * 8;
         let vertices_count = resol * resol;
         let triangles_count = 6 * (resol - 1) * (resol - 1);
         println!("resolution = {}", resol);
@@ -482,6 +484,7 @@ impl State {
 
         Ok(())
     }
+
     fn find_world_map(lat:u32,long:u32) -> Vec<Vec<f32>>{
         let mut map: Vec<Vec<f32>> = vec![];
         let mut height_min = f32::MAX;

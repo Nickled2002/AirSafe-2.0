@@ -71,11 +71,10 @@ struct State {
     index_buffer: wgpu::Buffer,
     uniform_bind_group: wgpu::BindGroup,
     uniform_buffer: wgpu::Buffer,
-    model_mat: Matrix4<f32>,
     view_mat: Matrix4<f32>,
     project_mat: Matrix4<f32>,
     depth_texture_view: wgpu::TextureView,
-    index_lenght: u32,
+    index_length: u32,
     camera: CamPos,
     camlook: CamPos,
 
@@ -157,16 +156,6 @@ impl IWgpuInit {
 
         let size = window.inner_size();
         let instance = wgpu::Instance::default();
-        /*let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
-            backends: wgpu::Backends::DX12,
-            //dx12_shader_compiler: Default::default(),
-            dx12_shader_compiler: {
-                wgpu::Dx12Compiler::Dxc {
-                    dxil_path: Some(PathBuf::from(r"assets/dxil.dll")),
-                    dxc_path: Some(PathBuf::from(r"assets/dxcompiler.dll")),
-                }
-            },
-        });*/
 
         let surface = unsafe { instance.create_surface(&window) }.unwrap();
 
@@ -269,21 +258,48 @@ impl State {
             .create_shader_module(wgpu::include_wgsl!("shader.wgsl"));
 
         // uniform data
-        let model_mat = transforms::create_transforms(
+        /*let model_mat = transforms::create_transforms(
             [-0.65 * width as f32, 5.0, -0.5 * height as f32],
             [0.0, 0.0, 0.0],
             [1.0, 100.0, 1.0],
-        );
+        );*/
         let camera = CamPos{
             x:0.0,
-            y:100.0,
+            y:200.0,
             z:0.0,
         };
         let camlook = CamPos{
             x:0.0,
-            y:100.0,
+            y:200.0,
             z:30.0,
         };
+        let mut terrain = surface::ITerrain {
+            colormap_name: colormap_name.to_string(),
+            width,
+            height,
+            ..Default::default()
+        };
+
+        let vertex_data = terrain.create_terrain_data();
+        let index_data = terrain.create_indices(vertex_data.1, vertex_data.1);
+        let mut model_mat: Vec<[f32; 16]> = vec![];
+        let chunk_size1 = (terrain.width - 1) as f32;
+        for i in 0..X_CHUNKS_COUNT {
+            for j in 0..Z_CHUNKS_COUNT {
+                let xt = -0.5 * X_CHUNKS_COUNT as f32 * chunk_size1 + i as f32 * chunk_size1;
+                let zt = -0.5 * Z_CHUNKS_COUNT as f32 * chunk_size1 + j as f32 * chunk_size1;
+                let translation = [xt, 100.0, zt];
+                let m = transforms::create_transforms(translation, [0.0, 0.0, 0.0], [1.0, 100.0, 1.0]);
+                model_mat.push(*(m.as_ref()));
+            }
+        }
+        let model_storage_buffer =
+            init.device
+                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                    label: Some("Model Matrix Storage Buffer"),
+                    contents: cast_slice(&model_mat),
+                    usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+                });
 
         let camera_position = (camera.x, camera.y, camera.z).into();
         let look_direction = (camlook.x, camlook.y, camlook.z).into();
@@ -296,20 +312,27 @@ impl State {
             init.config.width as f32 / init.config.height as f32,
         );
 
-        let mvp_mat = vp_mat * model_mat;
+        //let mvp_mat = vp_mat * model_mat;
 
         // create vertex uniform buffers
         let vertex_uniform_buffer = init.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                     label: Some("Vertex Uniform Buffer"),
-                    contents: cast_slice(mvp_mat.as_ref() as &[f32; 16]),
+                    contents: cast_slice(vp_mat.as_ref() as &[f32; 16]),
                     usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
 
         // uniform bind group for vertex shader
-        let (vertex_bind_group_layout, vertex_bind_group) = create_bind_group(
+        let (vertex_bind_group_layout, vertex_bind_group) = create_bind_group_storage(
             &init.device,
-            vec![wgpu::ShaderStages::VERTEX],
-            &[vertex_uniform_buffer.as_entire_binding()],
+            vec![wgpu::ShaderStages::VERTEX, wgpu::ShaderStages::VERTEX],
+            vec![
+                wgpu::BufferBindingType::Uniform,
+                wgpu::BufferBindingType::Storage { read_only: true },
+            ],
+            &[
+                vertex_uniform_buffer.as_entire_binding(),
+                model_storage_buffer.as_entire_binding(),
+            ],
         );
 
         let vertex_buffer_layout = VertexBufferLayout {
@@ -337,14 +360,7 @@ impl State {
 
         let depth_texture_view = create_depth_view(&init);
 
-        let mut terrain = surface::ITerrain {
-            colormap_name: colormap_name.to_string(),
-            width,
-            height,
-            ..Default::default()
-        };
-        let vertex_data = terrain.create_terrain_data();
-        let index_data = terrain.create_indices(vertex_data.1, vertex_data.1);
+
 
         let vertex_buffer = init
             .device
@@ -370,11 +386,10 @@ impl State {
             index_buffer,
             uniform_bind_group:vertex_bind_group,
             uniform_buffer:vertex_uniform_buffer,
-            model_mat,
             view_mat,
             project_mat,
             depth_texture_view,
-            index_lenght: index_data.len() as u32,
+            index_length: index_data.len() as u32,
             camera,
             camlook,
             terrain,
@@ -396,11 +411,11 @@ impl State {
 
             self.project_mat =
                 transforms::create_projection(new_size.width as f32 / new_size.height as f32, true);
-            let mvp_mat = self.project_mat * self.view_mat * self.model_mat;
+            let vp_mat = self.project_mat * self.view_mat;
             self.init.queue.write_buffer(
                 &self.uniform_buffer,
                 0,
-                cast_slice(mvp_mat.as_ref() as &[f32; 16]),
+                cast_slice(vp_mat.as_ref() as &[f32; 16]),
             );
 
             self.depth_texture_view = create_depth_view(&self.init);
@@ -588,22 +603,6 @@ impl State {
     fn update(&mut self) {
         // update buffers:
         if self.update_buffers {
-            self.model_mat = transforms::create_transforms(
-                [
-                    -0.65 * self.terrain.width as f32,
-                    5.0,
-                    -0.5 * self.terrain.height as f32,
-                ],
-                [0.0, 0.0, 0.0],
-                [1.0, self.aspect_ratio, 1.0],
-            );
-            let mvp_mat = self.project_mat * self.view_mat * self.model_mat;
-            self.init.queue.write_buffer(
-                &self.uniform_buffer,
-                0,
-                cast_slice(mvp_mat.as_ref() as &[f32; 16]),
-            );
-
             let vertex_data = self.terrain.create_terrain_data();
             self.init
                 .queue
@@ -612,15 +611,15 @@ impl State {
             self.init
                 .queue
                 .write_buffer(&self.index_buffer, 0, cast_slice(&index_data));
-            self.index_lenght = index_data.len() as u32;
+            self.index_length = index_data.len() as u32;
             self.update_buffers = false;
         }
         if self.update_buffers_view {
-            let mvp_mat = self.project_mat * self.view_mat * self.model_mat;
+            let vp_mat = self.project_mat * self.view_mat;
             self.init.queue.write_buffer(
                 &self.uniform_buffer,
                 0,
-                cast_slice(mvp_mat.as_ref() as &[f32; 16]),
+                cast_slice(vp_mat.as_ref() as &[f32; 16]),
             );
             self.update_buffers_view = false;
         }
@@ -655,7 +654,7 @@ impl State {
             render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
             render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
             render_pass.set_bind_group(0, &self.uniform_bind_group, &[]);
-            render_pass.draw_indexed(0..self.index_lenght, 0, 0..1);
+            render_pass.draw_indexed(0..self.index_length, 0, 0..CHUNKS_COUNT);
 
         }
 
@@ -665,26 +664,6 @@ impl State {
 
         Ok(())
     }
-}
-
-
-
-fn create_compute_texture_bind_group_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
-    device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor{
-        label: Some("Compute Texture Bind Group Layout"),
-        entries: &[
-            wgpu::BindGroupLayoutEntry {
-                binding: 0,
-                visibility: wgpu::ShaderStages::COMPUTE,
-                ty: wgpu::BindingType::StorageTexture {
-                    format: wgpu::TextureFormat::Rgba8Unorm,
-                    access: wgpu::StorageTextureAccess::WriteOnly,
-                    view_dimension: wgpu::TextureViewDimension::D2,
-                },
-                count: None,
-            },
-        ]
-    })
 }
 
 
@@ -809,47 +788,6 @@ pub fn create_depth_stencil_attachment<'a>(depth_view: &'a wgpu::TextureView) ->
         stencil_ops: None,
     }
 }
-
-
-pub fn round_to_multiple(any_number: u32, rounded_number: u32) -> u32 {
-    num::integer::div_ceil(any_number, rounded_number) * rounded_number
-}
-
-
-
-/*
-
-
-    pub fn plane_move(&mut self, moves: char) {
-        match moves {
-            'w' => {self.camera.x = self.camera.x+0.1;
-                if (self.camera.x>2.0){
-                    self.camera.x =0.0;
-                }
-            },
-            's' => self.camera.x = self.camera.x-0.1,
-            'a' => self.camera.z = self.camera.z -0.1,
-            'd' => self.camera.z = self.camera.z +0.1,
-            'q' => self.camera.y = self.camera.y+0.1,
-            'e' => self.camera.y = self.camera.y-0.1,
-            'r' => self.camlook.y = self.camlook.y+0.1,
-            'f' => self.camlook.y = self.camlook.y-0.1,
-            'z' => self.camlook.x = self.camlook.x +0.1,
-            'x' => self.camlook.x = self.camlook.x -0.1,
-            //'c' => self.camlook.z = self.camlook.z+0.1,
-            //'v' => self.camlook.z = self.camlook.z-0.1,
-            _ => {}
-        }
-        let look_direction = (self.camlook.x,self.camlook.y,self.camlook.z).into();
-        let up_direction = cgmath::Vector3::unit_y();
-
-        let camera_position = (self.camera.x, self.camera.y, self.camera.z).into();
-        let (view_mat,   project_mat, _view_project_mat) =
-        transforms::create_view_projection(camera_position, look_direction, up_direction, self.init.config.width as f32 / self.init.config.height as f32, IS_PERSPECTIVE);
-        self.view_mat=view_mat;
-        self.project_mat=project_mat;
-    }
-*/
 
 pub fn run( width: u32, height: u32, colormap_name: &str, ) {
     env_logger::init();
