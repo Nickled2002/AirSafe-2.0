@@ -1,9 +1,9 @@
 // vertex shader
-@binding(0) @group(0) var<uniform> vpMat: mat4x4f;
+@binding(0) @group(0) var<uniform> vpMat: mat4x4f; //separate view projection matrix and model matrix
 @group(0) @binding(1)  var<storage> modelMat: array<mat4x4f>;
 
 struct Input {
-    @builtin(instance_index) idx: u32,
+    @builtin(instance_index) idx: u32, // added index
     @location(0) position: vec4f,
     @location(1) color: vec4f
 };

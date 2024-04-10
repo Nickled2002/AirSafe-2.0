@@ -20,6 +20,9 @@ mod transforms;
 #[path="surface_data.rs"]
 mod surface;
 
+const X_CHUNKS_COUNT: u32 = 4;
+const Z_CHUNKS_COUNT: u32 = 4;
+const CHUNKS_COUNT: u32 = 16;
 
 
 
