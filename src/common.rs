@@ -20,8 +20,8 @@ mod transforms;
 #[path="surface_data.rs"]
 mod surface;
 
-const X_CHUNKS_COUNT: u32 = 10;
-const Z_CHUNKS_COUNT: u32 = 10;
+const X_CHUNKS_COUNT: u32 = 4;
+const Z_CHUNKS_COUNT: u32 = 4;
 
 
 
@@ -438,7 +438,7 @@ impl State {
                 /*if self.camlook.x < 120.0 {
                     self.camlook.x += 3.0;
                 }*/
-                    self.terrain.moves[0] += 1.0;
+                    self.terrain.moves[0] += 10.0;
                     self.update_buffers = true;
             },
             'n' => {/*

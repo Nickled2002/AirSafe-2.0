@@ -1,7 +1,9 @@
 #![allow(dead_code)]
 use bytemuck:: {Pod, Zeroable};
 use srtm::Tile;
-
+use std::thread;
+use std::sync::mpsc;
+use std::thread::JoinHandle;
 //mod colormap;
 
 #[repr(C)]
@@ -10,7 +12,41 @@ pub struct Vertex {
     pub position: [f32; 3],
     pub color: [f32; 3],
 }
+struct threaded {
+        pub joining: JoinHandle<Vec<Vec<f32>>>,
+}
+impl Default for threaded {
+    fn default() -> Self {
+        let thread = thread::spawn(move||->Vec<Vec<f32>>{
+                    let mut map :Vec<Vec<f32>> = vec![];
+                    let mut height_min = f32::MAX;
+                    let mut height_max = f32::MIN;
+                    let worldmap: Tile = Tile::from_file("src/Scotlandhgt/N00W000.hgt").unwrap();
 
+                    for x in 0..3600 {
+                        let mut p1:Vec<f32> = vec![];
+                        for z in 0..3600 {
+                            let y =  Tile::get(&worldmap, x as u32, z as u32) as f32;
+                            height_min = if y < height_min { y } else { height_min };
+                            height_max = if y > height_max { y } else { height_max };
+                            p1.push(y);
+                        }
+                    map.push(p1);
+                    }
+
+                    for x in 0..3600 as usize {
+                        for z in 0..3600 as usize {
+                            map[x][z] = (map[x][z] - height_min)/(height_max - height_min);
+                        }
+                    }
+                    //tx.send(map).unwrap();
+                    map
+                });
+        Self {
+        joining: thread,
+        }
+    }
+}
 pub struct ITerrain {
     pub offsets: [f32; 2],
     pub moves: [f32; 2],
@@ -18,13 +54,16 @@ pub struct ITerrain {
     pub water_level: f32,
     pub mapdata: Vec<Vec<f32>>,
     pub mapdata2: Vec<Vec<f32>>,
-    pub done :u32,
+    pub done1 :u32,
+    pub done2 :u32,
     pub chunksize:u32,
+    pub refer: std::sync::mpsc::Receiver<Vec<Vec<f32>>>,
+
 }
 
 impl Default for ITerrain {
-
-    fn default() -> Self {
+        fn default() -> Self {
+        let (tx, rx) = mpsc::channel::<Vec<Vec<f32>>>();
         Self {
             offsets: [0.0, 0.0],
             moves:[600.0,600.0],
@@ -32,8 +71,10 @@ impl Default for ITerrain {
             water_level: 0.1,
             mapdata: vec![],
             mapdata2: vec![],
-            done:0,
+            done1:0,
+            done2:0,
             chunksize:241,
+            refer:rx,
         }
     }
 }
@@ -82,6 +123,36 @@ impl ITerrain {
             }
         }
     }
+    pub fn find_another_world_map(&mut self)->JoinHandle<Vec<Vec<f32>>> {
+        let (tx, rx) = mpsc::channel::<Vec<Vec<f32>>>();
+        let thread = thread::spawn(move||->Vec<Vec<f32>>{
+                    let mut map :Vec<Vec<f32>> = vec![];
+                    let mut height_min = f32::MAX;
+                    let mut height_max = f32::MIN;
+                    let worldmap: Tile = Tile::from_file("src/Scotlandhgt/N00W000.hgt").unwrap();
+
+                    for x in 0..3600 {
+                        let mut p1:Vec<f32> = vec![];
+                        for z in 0..3600 {
+                            let y =  Tile::get(&worldmap, x as u32, z as u32) as f32;
+                            height_min = if y < height_min { y } else { height_min };
+                            height_max = if y > height_max { y } else { height_max };
+                            p1.push(y);
+                        }
+                    map.push(p1);
+                    }
+
+                    for x in 0..3600 as usize {
+                        for z in 0..3600 as usize {
+                            map[x][z] = (map[x][z] - height_min)/(height_max - height_min);
+                        }
+                    }
+                    //tx.send(map).unwrap();
+                    map
+                });
+        self.refer=rx;
+        thread
+    }
     fn color_interp(&mut self, color:&Vec<[f32;3]>, ta:&Vec<f32>, t:f32) -> [f32;3] {
         let len = 6usize;
         let mut res = [0f32;3];
@@ -114,7 +185,9 @@ impl ITerrain {
     }
 
 
+
     pub fn create_terrain_data(&mut self) -> (Vec<Vertex>, u32) {
+
         let increment_count = if self.level_of_detail <= 5 { self.level_of_detail + 1} else { 2*(self.level_of_detail - 2)};
         let vertices_per_row = (self.chunksize - 1)/increment_count + 1;
         let cdata =  vec![
@@ -126,17 +199,47 @@ impl ITerrain {
         ];
         let ta = vec![0.0f32, 0.3, 0.35, 0.6, 0.9, 1.0];
 
-        if self.done == 0 {
+        if self.done1 == 0 {
             self.find_world_map();
-            self.done +=1
+            self.done1 +=1
         }
+
+
         let mut data:Vec<Vertex> = vec![];
 
         for x in (0..self.chunksize as usize).step_by(increment_count as usize) {
             for z in (0..self.chunksize as usize).step_by(increment_count as usize) {
-                let usex = x as f32 + self.offsets[0] + self.moves[0];
-                let usez = z as f32 + self.offsets[1] + self.moves[1];
-                let mut y = self.mapdata[usex as usize][usez as usize] ;
+                let mut usex = x as f32 + self.offsets[0] + self.moves[0];
+                let mut usez = z as f32 + self.offsets[1] + self.moves[1];
+                let mut y =0.0;
+
+
+                match usex as usize {
+                    0 ..=2600 => {
+
+                        y = self.mapdata[usex as usize][usez as usize];
+                    }
+                    2601 ..= 4600=>{
+                        //print!("{} ",usex);
+
+                            //println!("imINasdvasdhsabdhasaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+                            //let mut my_thread = threaded::default();
+
+
+                        if usex > 3599.0 {
+
+                            if  usex == 3600.0 {
+                                self.mapdata2 = my_thread.joining.join().unwrap();
+                            }
+                            usex -= 3600.0;
+                            y = self.mapdata2[usex as usize][usez as usize];
+                        }else{
+                            y = self.mapdata[usex as usize][usez as usize];
+                        }
+                    }
+                    _ => {}
+                }
+                
                 if y < self.water_level {
                     y = self.water_level - 0.01;
                 }
