@@ -20,8 +20,8 @@ mod transforms;
 #[path="surface_data.rs"]
 mod surface;
 
-const X_CHUNKS_COUNT: u32 = 4;
-const Z_CHUNKS_COUNT: u32 = 4;
+const X_CHUNKS_COUNT: u32 = 5;
+const Z_CHUNKS_COUNT: u32 = 5;
 
 
 
@@ -73,6 +73,7 @@ struct State {
     view_mat: Matrix4<f32>,
     project_mat: Matrix4<f32>,
     depth_texture_view: wgpu::TextureView,
+    msaa_texture_view: wgpu::TextureView,
     index_length: u32,
     camera: CamPos,
     camlook: CamPos,
@@ -261,13 +262,13 @@ impl State {
         );*/
         let camera = CamPos{
             x:0.0,
-            y:200.0,
+            y:1000.0,
             z:0.0,
         };
         let camlook = CamPos{
             x:0.0,
             y:200.0,
-            z:30.0,
+            z:-30.0,
         };
         let mut terrain = surface::ITerrain::default();
         let mut translations: Vec<[f32; 2]> = vec![];
@@ -349,7 +350,7 @@ impl State {
 
 
         let depth_texture_view = create_depth_view(&init);
-
+        let msaa_texture_view = create_msaa_texture_view(&init);
         let vertex_data = terrain.create_collection_of_terrain_data(
             X_CHUNKS_COUNT,
             Z_CHUNKS_COUNT,
@@ -398,6 +399,7 @@ impl State {
             uniform_buffer:vertex_uniform_buffer,
             view_mat,
             project_mat,
+            msaa_texture_view ,
             depth_texture_view,
             index_length: index_data.len() as u32,
             camera,
@@ -429,13 +431,16 @@ impl State {
             );
 
             self.depth_texture_view = create_depth_view(&self.init);
+            if self.init.sample_count > 1 {
+                self.msaa_texture_view = create_msaa_texture_view(&self.init);
+            }
         }
     }
 
     pub fn plane_move(&mut self, moves: char) {
         match moves {
-            's' => {
-                /*if self.camlook.x < 120.0 {
+            's' => {/*
+                if self.camlook.x < 120.0 {
                     self.camlook.x += 3.0;
                 }*/
                     self.terrain.moves[0] += 10.0;
@@ -445,7 +450,7 @@ impl State {
                 if self.camlook.x > -120.0 {
                     self.camlook.x -= 3.0;
                 }*/
-                    self.terrain.moves[0] -= 1.0;
+                    self.terrain.moves[0] -= 10.0;
                     self.update_buffers = true;
 
             },
@@ -458,7 +463,7 @@ impl State {
                 self.camlook.x -= 1.0;
                 }}
                 if self.camlook.z == -30.0{
-                if self.camlook.x<0.0 {
+                if self.camlook.x<=0.0 {
                 if self.camlook.x > -120.0 {
                     self.camlook.x -= 3.0;
                 }
@@ -474,12 +479,12 @@ impl State {
                     self.camlook.x = 120.0;
                 }
                 }}*/
-                    self.terrain.moves[1] += 1.0;
+                    self.terrain.moves[1] += 10.0;
                     self.update_buffers = true;
 
                 },
             'e' =>{/*if self.camlook.z == 30.0{
-                if self.camlook.x<0.0 {
+                if self.camlook.x<=0.0 {
                 if self.camlook.x > -120.0 {
                     self.camlook.x -= 3.0;
                 }
@@ -505,7 +510,7 @@ impl State {
                 self.camlook.x -= 1.0;
                 }
             }*/
-                    self.terrain.moves[1] -= 1.0;
+                    self.terrain.moves[1] -= 10.0;
                     self.update_buffers = true;
 
             },
@@ -542,19 +547,19 @@ impl State {
                 ..
             } => match keycode {
                 VirtualKeyCode::W => {
-                    self.plane_move('w');
-                    true
-                }
-                VirtualKeyCode::S => {
                     self.plane_move('e');
                     true
                 }
+                VirtualKeyCode::S => {
+                    self.plane_move('w');
+                    true
+                }
                 VirtualKeyCode::A => {
-                    self.plane_move('s');
+                    self.plane_move('n');
                     true
                 }
                 VirtualKeyCode::D => {
-                    self.plane_move('n');
+                    self.plane_move('s');
                     true
                 }
                 VirtualKeyCode::PageUp => {
@@ -633,11 +638,17 @@ impl State {
 
         {
             let color_attach = create_color_attachment(&view);
+            let msaa_attach = create_msaa_color_attachment(&view, &self.msaa_texture_view);
+            let color_attachment = if self.init.sample_count == 1 {
+                color_attach
+            } else {
+                msaa_attach
+            };
             let depth_attachment = create_depth_stencil_attachment(&self.depth_texture_view);
 
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("Render Pass"),
-                color_attachments: &[Some(color_attach)],
+                color_attachments: &[Some(color_attachment)],
                 depth_stencil_attachment: Some(depth_attachment),
             });
 
@@ -759,6 +770,36 @@ pub fn create_color_attachment<'a>(texture_view: &'a wgpu::TextureView) -> wgpu:
     }
 }
 
+pub fn create_msaa_texture_view(init: &IWgpuInit) -> wgpu::TextureView{
+    let msaa_texture = init.device.create_texture(&wgpu::TextureDescriptor {
+        size: wgpu::Extent3d {
+            width: init.config.width,
+            height: init.config.height,
+            depth_or_array_layers: 1,
+        },
+        mip_level_count: 1,
+        sample_count: init.sample_count,
+        dimension: wgpu::TextureDimension::D2,
+        format: init.config.format,
+        usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+        label: None,
+        view_formats: &[],
+    });
+
+    msaa_texture.create_view(&wgpu::TextureViewDescriptor::default())
+}
+
+pub fn create_msaa_color_attachment<'a>(texture_view: &'a wgpu::TextureView, msaa_view: &'a wgpu::TextureView)
+-> wgpu::RenderPassColorAttachment<'a> {
+    wgpu::RenderPassColorAttachment {
+        view: msaa_view,
+        resolve_target: Some(texture_view),
+        ops: wgpu::Operations {
+            load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+            store: true,
+        },
+    }
+}
 pub fn create_depth_view(init: &IWgpuInit) -> wgpu::TextureView {
     let depth_texture = init.device.create_texture(&wgpu::TextureDescriptor {
         size: wgpu::Extent3d {
