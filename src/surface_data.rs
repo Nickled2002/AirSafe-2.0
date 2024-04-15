@@ -12,17 +12,20 @@ pub struct Vertex {
     pub position: [f32; 3],
     pub color: [f32; 3],
 }
+trait Defaultable {
+    fn default_with_params(lat: u32,long:u32) -> Self;
+}
 struct threaded {
     pub refer: std::sync::mpsc::Receiver<Vec<Vec<f32>>>,
 }
-impl Default for threaded {
-    fn default() -> Self {
+impl Defaultable for threaded {
+    fn default_with_params(lat:u32,long:u32) -> Self {
         let (tx, rx) = mpsc::channel();
         let thread = thread::spawn(move||{
             let mut map :Vec<Vec<f32>> = vec![];
             let mut height_min = f32::MAX;
             let mut height_max = f32::MIN;
-            let worldmap: Tile = Tile::from_file("src/Scotlandhgt/N56W003.hgt").unwrap();
+            let worldmap: Tile = Tile::from_file("src/Scotlandhgt/N".to_owned() + &*lat.to_string() +"W00"+ &*long.to_string() +".hgt").unwrap_or(Tile::from_file("src/Scotlandhgt/N00W000.hgt").unwrap());
 
             for x in 0..3600{
                 let mut p1:Vec<f32> = vec![];
@@ -48,6 +51,9 @@ impl Default for threaded {
         }
     }
 }
+impl threaded{
+
+}
 
 pub struct ITerrain {
     pub offsets: [f32; 2],
@@ -61,16 +67,24 @@ pub struct ITerrain {
     pub lat :u32,
     pub long :u32,
     pub chunksize:u32,
-    pub elthread:threaded,
+    pub nthread: threaded,
+    pub ethread: threaded,
+    pub sthread: threaded,
+    pub wthread: threaded,
 
 }
 
 impl Default for ITerrain {
         fn default() -> Self {
-            let thread = threaded::default();
+            let mut lat =55;
+            let mut long = 3;
+            let norththread = threaded::default_with_params(lat,long);
+            let eastthread = threaded::default_with_params(lat,long);
+            let souththread = threaded::default_with_params(lat,long);
+            let westthread = threaded::default_with_params(lat,long);
         Self {
             offsets: [0.0, 0.0],
-            moves:[600.0,600.0],
+            moves:[1800.0,1800.0],
             level_of_detail: 5,
             water_level: 0.1,
             mapdata: vec![],
@@ -80,7 +94,10 @@ impl Default for ITerrain {
             chunksize:241,
             lat:54,
             long:3,
-            elthread: thread,
+            nthread: norththread,
+            ethread: eastthread,
+            sthread: souththread,
+            wthread: westthread,
         }
     }
 }
@@ -110,7 +127,7 @@ impl ITerrain {
     pub fn find_world_map(&mut self) {
         let mut height_min = f32::MAX;
         let mut height_max = f32::MIN;
-        let worldmap: Tile = Tile::from_file("src/Scotlandhgt/N56W004.hgt").unwrap();
+        let worldmap: Tile =  Tile::from_file("src/Scotlandhgt/N".to_owned() + &*self.lat.to_string() +"W00"+ &*self.long.to_string() +".hgt").unwrap_or(Tile::from_file("src/Scotlandhgt/N00W000.hgt").unwrap());
 
         for x in 0..3600 {
             let mut p1:Vec<f32> = vec![];
@@ -190,27 +207,28 @@ impl ITerrain {
                 //let usex = x as f32 + self.offsets[0] + self.moves[0];
                 let usez = z as f32 + self.offsets[1] + self.moves[1];
                 let mut y = 0.0;
-                    //self.mapdata[usex as usize][usez as usize];
                 match usex as usize {
-                    0 ..=2600 => {
+                     0 ..=1000 => {
 
                         y = self.mapdata[usex as usize][usez as usize];
                     }
-                    2601 ..= 5000=>{
-                        if self.done2 == 0 {
+                    1001 ..=2600 => {
 
+                        y = self.mapdata[usex as usize][usez as usize];
+                    }
+                    2601 ..= 3599=>{
+                        if self.done2 == 0 {
                         for received in &self.elthread.refer {
                             self.mapdata2 = received
                         }
                         self.done2 +=1;
                         }
-
-                        if usex > 3599.0 {
-                            usex -= 3600.0;
-                            y = self.mapdata2[usex as usize][usez as usize];
-                        }else{
-                            y = self.mapdata[usex as usize][usez as usize];
+                        y = self.mapdata[usex as usize][usez as usize];
                         }
+                    }
+                    3600 ..= 5000=>{
+                        usex -= 3600.0;
+                            y = self.mapdata2[usex as usize][usez as usize];
                     }
                     _ => {
                         if self.done2 == 1 {
