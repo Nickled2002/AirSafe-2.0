@@ -242,6 +242,57 @@ impl Terrain {
                 let usez : i32= (z as f32 + self.offsets[1] + self.moves[1])as i32;
                 //let usez = z as f32 + self.offsets[1] + self.moves[1];
                 let mut y = 0.0;
+                if (usez > 200 && usez <= 3400)&&(usex > 200 && usex <= 3400){
+                    y = self.mapdata[usex as usize][usez as usize];
+                    if self.done1 ==2 {
+                            Threaded::transferwithret(&mut self.nthread,self.lat,self.long+1);
+                            Threaded::transferwithret(&mut self.sthread,self.lat,self.long-1);
+                            Threaded::transferwithret(&mut self.ethread,self.lat+1,self.long);
+                            Threaded::transferwithret(&mut self.wthread,self.lat-1,self.long);
+                            self.done1 +=1;
+                         }
+                }
+                if (usez <= 200 && usez >=0)||(usex <= 200 && usex >=0){
+                    if usez <= 200 && usez >=0{
+                        if self.done2 == 0 {
+                        for received in &self.sthread.refer {
+                            self.mapdata2 = vec![];
+                            self.mapdata2 = received
+                        }
+                        self.done2 +=1;
+                        }
+                         y = self.mapdata[usex as usize][usez as usize];
+                    }
+                    if usex <= 200 && usex >=0{
+                        if self.done2 == 0 {
+                        for received in &self.wthread.refer {
+                            self.mapdata2 = vec![];
+                            self.mapdata2 = received
+                        }
+                        self.done2 +=1;
+                        }
+                         y = self.mapdata[usex as usize][(usez as i32 +self.back[1]) as usize];
+                    }
+                }
+                if (usez < 0 && usez >= -1800)||(usex < 0 && usex >= -1800){
+                    if usez < 0 && usez >= -1800 {
+                        self.back[1] = 3600;
+                        y = self.mapdata2[usex as usize][(usez as i32 + self.back[1]) as usize];
+                    }
+                    if usex < 0 && usex >= -1800 {
+
+                    }
+                }
+                if (usez < -1800)&&(usex < -1800){
+                    y = self.mapdata[usex as usize][usez as usize];
+                    if self.done1 ==2 {
+                            Threaded::transferwithret(&mut self.nthread,self.lat,self.long+1);
+                            Threaded::transferwithret(&mut self.sthread,self.lat,self.long-1);
+                            Threaded::transferwithret(&mut self.ethread,self.lat+1,self.long);
+                            Threaded::transferwithret(&mut self.wthread,self.lat-1,self.long);
+                            self.done1 +=1;
+                         }
+                }
                 match usez as i32 {
                     m if m < -1800 =>{
                             self.moves[1] += 3600.0;
@@ -299,7 +350,7 @@ impl Terrain {
                         self.done1=2;
                         self.done2=0;
 
-                }}
+                }}/*
                 match usex as i32 {
                     n if n < -1400 =>{
                         //self.moves[0] += 3600.0;
@@ -357,7 +408,7 @@ impl Terrain {
                         self.done1=2;
                         self.done2=0;
 
-                }}
+                }}*/
 
                 if y < self.water_level {
                     y = self.water_level - 0.01;
