@@ -1,9 +1,6 @@
-#![allow(dead_code)]
 use std::f32::consts::PI;
 use cgmath::*;
 
-#[rustfmt::skip]
-#[allow(unused)]
 pub const OPENGL_TO_WGPU_MATRIX: Matrix4<f32> = Matrix4::new(
     //constant matrix opengl to wgpu based on directx and metal coordinate system
     //but cgmath is built for opengl so we need to add the z component
