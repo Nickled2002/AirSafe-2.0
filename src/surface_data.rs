@@ -1,7 +1,9 @@
-#![allow(dead_code)]
 use bytemuck:: {Pod, Zeroable};
 use srtm::Tile;
-
+use std::thread;
+use std::sync::mpsc;
+use std::thread::JoinHandle;
+use std::mem;
 //mod colormap;
 
 #[repr(C)]
@@ -10,40 +12,138 @@ pub struct Vertex {
     pub position: [f32; 3],
     pub color: [f32; 3],
 }
-
-pub struct ITerrain {
-    pub offsets: [f32; 2],
-    pub moves: [f32; 2],
-    pub level_of_detail: u32,
-    pub water_level: f32,
-    pub mapdata: Vec<Vec<f32>>,
-    pub mapdata2: Vec<Vec<f32>>,
-    pub done :u32,
-    pub chunksize:u32,
+trait Defaultable {
+    fn default_with_params(lat: u32,long:u32) -> Self;
 }
+struct Threaded {
+    pub refer: std::sync::mpsc::Receiver<Vec<Vec<f32>>>,
+    pub thread:JoinHandle<()>,
+}
+impl Defaultable for Threaded {
+    fn default_with_params(lat:u32,long:u32) -> Self {
+        let (tx, rx) = mpsc::channel();
+        let thread = thread::spawn(move||{
+            let mut map :Vec<Vec<f32>> = vec![];
+            let mut height_min = f32::MAX;
+            let mut height_max = f32::MIN;
+            let worldmap: Tile = Tile::from_file("src/Scotlandhgt/N".to_owned() + &*lat.to_string() +"W00"+ &*long.to_string() +".hgt").unwrap_or(Tile::from_file("src/Scotlandhgt/N00W000.hgt").unwrap());
 
-impl Default for ITerrain {
+            for x in 0..3600{
+                let mut p1:Vec<f32> = vec![];
+                for z in 0..3600{
+                    let y =  Tile::get(&worldmap, x as u32, z as u32) as f32;
+                    height_min = if y  < height_min { y } else { height_min };
+                    height_max = if y  > height_max { y } else { height_max };
+                    p1.push(y);
 
-    fn default() -> Self {
+                }
+                map.push(p1);
+            }
+
+            for x in 0..3600 as usize {
+                for z in 0..3600 as usize {
+                    map[x][z] = (map[x][z] as f32 - height_min)/(height_max - height_min);
+                }
+            }
+            tx.send(map).unwrap();
+        });
         Self {
-            offsets: [0.0, 0.0],
-            moves:[600.0,600.0],
-            level_of_detail: 5,
-            water_level: 0.1,
-            mapdata: vec![],
-            mapdata2: vec![],
-            done:0,
-            chunksize:241,
+            refer: rx,
+            thread: thread,
         }
     }
 }
 
-impl ITerrain {
+impl Threaded {
+    fn transfer(&mut self, lat:u32,long:u32){
+        let (tx, rx) = mpsc::channel();
+        let thread = thread::spawn(move||{
+            let mut map :Vec<Vec<f32>> = vec![];
+            let mut height_min = f32::MAX;
+            let mut height_max = f32::MIN;
+            let worldmap: Tile = Tile::from_file("src/Scotlandhgt/N".to_owned() + &*lat.to_string() +"W00"+ &*long.to_string() +".hgt").unwrap_or(Tile::from_file("src/Scotlandhgt/N00W000.hgt").unwrap());
 
-    pub async fn new(&mut self) -> Self {
-        Self::default()
+            for x in 0..3600{
+                let mut p1:Vec<f32> = vec![];
+                for z in 0..3600{
+                    let y =  Tile::get(&worldmap, x as u32, z as u32) as f32;
+                    height_min = if y  < height_min { y } else { height_min };
+                    height_max = if y  > height_max { y } else { height_max };
+                    p1.push(y);
+
+                }
+                map.push(p1);
+            }
+
+            for x in 0..3600 as usize {
+                for z in 0..3600 as usize {
+                    map[x][z] = (map[x][z] as f32 - height_min)/(height_max - height_min);
+                }
+            }
+            tx.send(map).unwrap();
+        });
+        self.thread=thread;
+        self.refer=rx;
     }
+    fn transferwithret(&mut self, lat:u32,long:u32){
+        let tryy = Threaded::default_with_params(lat,long);
+        self.thread=tryy.thread;
+        self.refer=tryy.refer;
+    }
+}
 
+
+pub struct Terrain {
+    pub offsets: [f32; 2],
+    pub moves: [f32; 2],
+    pub back: [i32; 2],
+    pub level_of_detail: u32,
+    pub water_level: f32,
+    pub mapdata: Vec<Vec<f32>>,
+    pub mapdata2: Vec<Vec<f32>>,
+    pub done1 :u32,
+    pub done2 :u32,
+    pub lat :u32,
+    pub long :u32,
+    pub chunksize:u32,
+    nthread: Threaded,
+    ethread: Threaded,
+    sthread: Threaded,
+    wthread: Threaded,
+
+}
+
+impl Default for Terrain {
+        fn default() -> Self {
+            let mut lat =54;
+            let mut long = 4;
+            let norththread = Threaded::default_with_params(lat,long);
+            let eastthread = Threaded::default_with_params(lat,long);
+            long -=2;
+            let souththread = Threaded::default_with_params(lat,long);
+            let westthread = Threaded::default_with_params(lat,long);
+        Self {
+            offsets: [0.0, 0.0],
+            moves:[1800.0,1800.0],
+            back:[0,0],
+            level_of_detail: 5,
+            water_level: 0.1,
+            mapdata: vec![],
+            mapdata2: vec![],
+            done1:0,
+            done2:0,
+            chunksize:241,
+            lat:54,
+            long:3,
+            nthread: norththread,
+            ethread: eastthread,
+            sthread: souththread,
+            wthread: westthread,
+        }
+    }
+}
+
+impl Terrain {
 
     pub fn create_indices(&mut self, width: u32, height: u32) -> Vec<u32> {
         let n_vertices_per_row = height;
@@ -63,7 +163,7 @@ impl ITerrain {
     pub fn find_world_map(&mut self) {
         let mut height_min = f32::MAX;
         let mut height_max = f32::MIN;
-        let worldmap: Tile = Tile::from_file("src/Scotlandhgt/N55W005.hgt").unwrap();
+        let worldmap: Tile =  Tile::from_file("src/Scotlandhgt/N".to_owned() + &*self.lat.to_string() +"W00"+ &*self.long.to_string() +".hgt").unwrap_or(Tile::from_file("src/Scotlandhgt/N00W000.hgt").unwrap());
 
         for x in 0..3600 {
             let mut p1:Vec<f32> = vec![];
@@ -114,7 +214,9 @@ impl ITerrain {
     }
 
 
+
     pub fn create_terrain_data(&mut self) -> (Vec<Vertex>, u32) {
+
         let increment_count = if self.level_of_detail <= 5 { self.level_of_detail + 1} else { 2*(self.level_of_detail - 2)};
         let vertices_per_row = (self.chunksize - 1)/increment_count + 1;
         let cdata =  vec![
@@ -126,21 +228,191 @@ impl ITerrain {
         ];
         let ta = vec![0.0f32, 0.3, 0.35, 0.6, 0.9, 1.0];
 
-        if self.done == 0 {
+        if self.done1 == 0 {
             self.find_world_map();
-            self.done +=1
+            self.done1 +=1
         }
+
+
         let mut data:Vec<Vertex> = vec![];
 
         for x in (0..self.chunksize as usize).step_by(increment_count as usize) {
             for z in (0..self.chunksize as usize).step_by(increment_count as usize) {
-                let usex = x as f32 + self.offsets[0] + self.moves[0];
-                let usez = z as f32 + self.offsets[1] + self.moves[1];
-                let mut y = self.mapdata[usex as usize][usez as usize] ;
+                let usex : i32= (x as f32 + self.offsets[0] + self.moves[0])as i32;
+                let usez : i32= (z as f32 + self.offsets[1] + self.moves[1])as i32;
+                //let usez = z as f32 + self.offsets[1] + self.moves[1];
+                let mut y = 0.0;
+                if (usez > 200 && usez <= 3400)&&(usex > 200 && usex <= 3400){
+                    y = self.mapdata[usex as usize][usez as usize];
+                    if self.done1 ==2 {
+                            Threaded::transferwithret(&mut self.nthread,self.lat,self.long+1);
+                            Threaded::transferwithret(&mut self.sthread,self.lat,self.long-1);
+                            Threaded::transferwithret(&mut self.ethread,self.lat+1,self.long);
+                            Threaded::transferwithret(&mut self.wthread,self.lat-1,self.long);
+                            self.done1 +=1;
+                         }
+                }
+                if (usez <= 200 && usez >=0)||(usex <= 200 && usex >=0){
+                    if usez <= 200 && usez >=0{
+                        if self.done2 == 0 {
+                        for received in &self.sthread.refer {
+                            self.mapdata2 = vec![];
+                            self.mapdata2 = received
+                        }
+                        self.done2 +=1;
+                        }
+                         y = self.mapdata[usex as usize][usez as usize];
+                    }
+                    if usex <= 200 && usex >=0{
+                        if self.done2 == 0 {
+                        for received in &self.wthread.refer {
+                            self.mapdata2 = vec![];
+                            self.mapdata2 = received
+                        }
+                        self.done2 +=1;
+                        }
+                         y = self.mapdata[usex as usize][(usez as i32 +self.back[1]) as usize];
+                    }
+                }
+                if (usez < 0 && usez >= -1800)||(usex < 0 && usex >= -1800){
+                    if usez < 0 && usez >= -1800 {
+                        self.back[1] = 3600;
+                        y = self.mapdata2[usex as usize][(usez as i32 + self.back[1]) as usize];
+                    }
+                    if usex < 0 && usex >= -1800 {
+
+                    }
+                }
+                if (usez < -1800)&&(usex < -1800){
+                    y = self.mapdata[usex as usize][usez as usize];
+                    if self.done1 ==2 {
+                            Threaded::transferwithret(&mut self.nthread,self.lat,self.long+1);
+                            Threaded::transferwithret(&mut self.sthread,self.lat,self.long-1);
+                            Threaded::transferwithret(&mut self.ethread,self.lat+1,self.long);
+                            Threaded::transferwithret(&mut self.wthread,self.lat-1,self.long);
+                            self.done1 +=1;
+                         }
+                }
+                match usez as i32 {
+                    m if m < -1800 =>{
+                            self.moves[1] += 3600.0;
+                            self.back[1] = 0;
+                            self.mapdata = vec![];
+                            self.mapdata = self.mapdata2.clone();
+                            self.long -= 1;
+                            self.done1 = 2;
+                            self.done2 = 0;
+                    }
+                    -1800 ..=-1 => {
+                        self.back[1] = 3600;
+                        y = self.mapdata2[usex as usize][(usez as i32 +self.back[1]) as usize];
+
+                    }
+                     0 ..=200 => {
+                        if self.done2 == 0 {
+                        for received in &self.sthread.refer {
+                            self.mapdata2 = vec![];
+                            self.mapdata2 = received
+                        }
+                        self.done2 +=1;
+                        }
+                         y = self.mapdata[usex as usize][usez as usize];
+                    }
+                    201 ..=3400 => {
+
+                        y = self.mapdata[usex as usize][usez as usize];
+                        if self.done1 ==2 {
+                            Threaded::transferwithret(&mut self.nthread,self.lat,self.long+1);
+                            Threaded::transferwithret(&mut self.sthread,self.lat,self.long-1);
+                            self.done1 +=1;
+                         }
+                    }
+                    3401 ..= 3599=>{
+                        if self.done2 == 0 {
+                        for received in &self.nthread.refer {
+                            self.mapdata2 = vec![];
+                            self.mapdata2 = received
+                        }
+                        self.done2 +=1;
+                        }
+                        y = self.mapdata[usex as usize][usez as usize];
+                    }
+                    3600 ..= 5000=>{
+                        self.back[1] = -3600;
+                        y = self.mapdata2[usex as usize][(usez as i32 + self.back[1])as usize];
+                    }
+                    _ => {
+                        self.moves[1] -=3600.0;
+                        self.back[1] = 0;
+                        self.mapdata = vec![];
+                        self.mapdata = self.mapdata2.clone();
+                        self.long +=1;
+                        self.done1=2;
+                        self.done2=0;
+
+                }}/*
+                match usex as i32 {
+                    n if n < -1400 =>{
+                        //self.moves[0] += 3600.0;
+                        //self.back[0] = 0;
+                        self.mapdata = vec![];
+                        self.mapdata = self.mapdata2.clone();
+                        self.lat -=1;
+                        self.done1=2;
+                        self.done2=0;
+                    }
+                    -1400 ..=-1 => {
+                        self.back[0] += 3600;
+                        y = self.mapdata2[usex as usize][(usez as i32 +self.back[1]) as usize];
+
+
+                    }
+                     0 ..=200 => {
+                        if self.done2 == 0 {
+                        for received in &self.wthread.refer {
+                            self.mapdata2 = vec![];
+                            self.mapdata2 = received
+                        }
+                        self.done2 +=1;
+                        }
+                         y = self.mapdata[usex as usize][(usez as i32 +self.back[1]) as usize];
+                    }
+                    201 ..=3400 => {
+                        y = self.mapdata[usex as usize][(usez as i32 +self.back[1]) as usize];
+                        if self.done1 ==2 {
+                            Threaded::transferwithret(&mut self.ethread,self.lat+1,self.long);
+                            Threaded::transferwithret(&mut self.wthread,self.lat-1,self.long);
+                            self.done1 +=1;
+                         }
+                    }
+                    3401 ..= 3599=>{
+                        if self.done2 == 0 {
+                        for received in &self.ethread.refer {
+                            self.mapdata2 = vec![];
+                            self.mapdata2 = received
+                        }
+                        self.done2 +=1;
+                        }
+                        y = self.mapdata[usex as usize][(usez as i32 +self.back[1]) as usize];
+                    }
+                    3600 ..= 5000=>{
+                        self.back[0] -= 3600;
+                        y = self.mapdata2[usex as usize][(usez as i32 +self.back[1]) as usize];
+                    }
+                    _ => {
+                        self.moves[0] -=3600.0;
+                        self.back[0] = 0;
+                        self.mapdata = vec![];
+                        self.mapdata = self.mapdata2.clone();
+                        self.lat +=1;
+                        self.done1=2;
+                        self.done2=0;
+
+                }}*/
+
                 if y < self.water_level {
                     y = self.water_level - 0.01;
                 }
-                //let y=0.0;
                 let position = [x as f32, y, z as f32];
                 let color = self.add_terrain_colors(&cdata, &ta, 0.0, 1.0, y);
 
@@ -155,6 +427,7 @@ impl ITerrain {
 
         let mut k:u32 = 0;
         for _i in 0..x_chunks {
+            //self.level_of_detail=5;
             for _j in 0..z_chunks {
                 self.offsets = translations[k as usize];
                 let dd = self.create_terrain_data();

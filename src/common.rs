@@ -1,6 +1,4 @@
-#![allow(dead_code)]
 use std:: {iter, mem };
-//use std::f32::consts::PI;
 use cgmath::Matrix4;
 use wgpu::util::DeviceExt;
 use winit::{
@@ -20,8 +18,8 @@ mod transforms;
 #[path="surface_data.rs"]
 mod surface;
 
-const X_CHUNKS_COUNT: u32 = 10;
-const Z_CHUNKS_COUNT: u32 = 10;
+const X_CHUNKS_COUNT: u32 = 5;
+const Z_CHUNKS_COUNT: u32 = 5;
 
 
 
@@ -32,7 +30,7 @@ pub struct CamPos{
     pub y:f32,
     pub z:f32
 }
-pub struct IRenderPipeline<'a> {
+pub struct RenderPipeline<'a> {
     pub shader: Option<&'a wgpu::ShaderModule>,
     pub vs_shader: Option<&'a wgpu::ShaderModule>,
     pub fs_shader: Option<&'a wgpu::ShaderModule>,
@@ -46,7 +44,7 @@ pub struct IRenderPipeline<'a> {
     pub fs_entry: String,
 }
 
-pub struct IWgpuInit {
+pub struct WgpuInit {
     pub instance: wgpu::Instance,
     pub surface: wgpu::Surface,
     pub adapter: wgpu::Adapter,
@@ -64,7 +62,7 @@ pub struct FpsCounter {
 }
 
 struct State {
-    init: IWgpuInit,
+    init: WgpuInit,
     pipeline: wgpu::RenderPipeline,
     vertex_buffer: Vec<wgpu::Buffer>,
     index_buffer: wgpu::Buffer,
@@ -73,17 +71,18 @@ struct State {
     view_mat: Matrix4<f32>,
     project_mat: Matrix4<f32>,
     depth_texture_view: wgpu::TextureView,
+    msaa_texture_view: wgpu::TextureView,
     index_length: u32,
     camera: CamPos,
     camlook: CamPos,
     translations: Vec<[f32; 2]>,
-    terrain: surface::ITerrain,
+    terrain: surface::Terrain,
     update_buffers: bool,
-    update_buffers_view: bool,
+    //update_buffers_view: bool,
     fps_counter: FpsCounter,
 }
 
-impl Default for IRenderPipeline<'_> {
+impl Default for RenderPipeline<'_> {
     fn default() -> Self {
         Self {
             shader: None,
@@ -101,8 +100,8 @@ impl Default for IRenderPipeline<'_> {
     }
 }
 
-impl IRenderPipeline<'_> {
-    pub fn new(&mut self, init: &IWgpuInit) -> wgpu::RenderPipeline {
+impl RenderPipeline<'_> {
+    pub fn new(&mut self, init: &WgpuInit) -> wgpu::RenderPipeline {
         if self.shader.is_some() {
             self.vs_shader = self.shader;
             self.fs_shader = self.shader;
@@ -148,7 +147,7 @@ impl IRenderPipeline<'_> {
     }
 }
 
-impl IWgpuInit {
+impl WgpuInit {
     pub async fn new(window: &Window, sample_count:u32, limits:Option<wgpu::Limits>) -> Self {
         let limits_device = limits.unwrap_or(wgpu::Limits::default());
 
@@ -247,7 +246,7 @@ impl State {
         window: &Window,
 
     ) -> Self {
-        let init = IWgpuInit::new(&window,1, None).await;
+        let init = WgpuInit::new(&window,1, None).await;
 
         let shader = init
             .device
@@ -261,15 +260,15 @@ impl State {
         );*/
         let camera = CamPos{
             x:0.0,
-            y:200.0,
+            y:1000.0,
             z:0.0,
         };
         let camlook = CamPos{
             x:0.0,
             y:200.0,
-            z:30.0,
+            z:-30.0,
         };
-        let mut terrain = surface::ITerrain::default();
+        let mut terrain = surface::Terrain::default();
         let mut translations: Vec<[f32; 2]> = vec![];
         let mut model_mat: Vec<[f32; 16]> = vec![];
         let chunk_size1 = (terrain.chunksize - 1) as f32;
@@ -339,7 +338,7 @@ impl State {
                 push_constant_ranges: &[],
             });
 
-        let mut ppl = IRenderPipeline {
+        let mut ppl = RenderPipeline {
             shader: Some(&shader),
             pipeline_layout: Some(&pipeline_layout),
             vertex_buffer_layout: &[vertex_buffer_layout],
@@ -349,7 +348,7 @@ impl State {
 
 
         let depth_texture_view = create_depth_view(&init);
-
+        let msaa_texture_view = create_msaa_texture_view(&init);
         let vertex_data = terrain.create_collection_of_terrain_data(
             X_CHUNKS_COUNT,
             Z_CHUNKS_COUNT,
@@ -371,15 +370,6 @@ impl State {
                 k += 1;
             }
         }
-        /*
-        let vertex_buffer = init
-            .device
-            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("Vertex Buffer"),
-                contents: cast_slice(&vertex_data.0),
-                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
-            });
-        */
         let index_buffer = init
             .device
             .create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -398,6 +388,7 @@ impl State {
             uniform_buffer:vertex_uniform_buffer,
             view_mat,
             project_mat,
+            msaa_texture_view ,
             depth_texture_view,
             index_length: index_data.len() as u32,
             camera,
@@ -405,7 +396,7 @@ impl State {
             translations,
             terrain,
             update_buffers: false,
-            update_buffers_view: false,
+            //update_buffers_view: false,
             fps_counter: FpsCounter::default(),
         }
     }
@@ -429,6 +420,9 @@ impl State {
             );
 
             self.depth_texture_view = create_depth_view(&self.init);
+            if self.init.sample_count > 1 {
+                self.msaa_texture_view = create_msaa_texture_view(&self.init);
+            }
         }
     }
 
@@ -438,14 +432,14 @@ impl State {
                 /*if self.camlook.x < 120.0 {
                     self.camlook.x += 3.0;
                 }*/
-                    self.terrain.moves[0] += 1.0;
+                    self.terrain.moves[0] += 10.0;
                     self.update_buffers = true;
             },
             'n' => {/*
                 if self.camlook.x > -120.0 {
                     self.camlook.x -= 3.0;
                 }*/
-                    self.terrain.moves[0] -= 1.0;
+                    self.terrain.moves[0] -= 10.0;
                     self.update_buffers = true;
 
             },
@@ -458,7 +452,7 @@ impl State {
                 self.camlook.x -= 1.0;
                 }}
                 if self.camlook.z == -30.0{
-                if self.camlook.x<0.0 {
+                if self.camlook.x<=0.0 {
                 if self.camlook.x > -120.0 {
                     self.camlook.x -= 3.0;
                 }
@@ -474,12 +468,12 @@ impl State {
                     self.camlook.x = 120.0;
                 }
                 }}*/
-                    self.terrain.moves[1] += 1.0;
+                    self.terrain.moves[1] += 10.0;
                     self.update_buffers = true;
 
                 },
             'e' =>{/*if self.camlook.z == 30.0{
-                if self.camlook.x<0.0 {
+                if self.camlook.x<=0.0 {
                 if self.camlook.x > -120.0 {
                     self.camlook.x -= 3.0;
                 }
@@ -505,7 +499,7 @@ impl State {
                 self.camlook.x -= 1.0;
                 }
             }*/
-                    self.terrain.moves[1] -= 1.0;
+                    self.terrain.moves[1] -= 10.0;
                     self.update_buffers = true;
 
             },
@@ -542,19 +536,19 @@ impl State {
                 ..
             } => match keycode {
                 VirtualKeyCode::W => {
-                    self.plane_move('w');
-                    true
-                }
-                VirtualKeyCode::S => {
                     self.plane_move('e');
                     true
                 }
+                VirtualKeyCode::S => {
+                    self.plane_move('w');
+                    true
+                }
                 VirtualKeyCode::A => {
-                    self.plane_move('s');
+                    self.plane_move('n');
                     true
                 }
                 VirtualKeyCode::D => {
-                    self.plane_move('n');
+                    self.plane_move('s');
                     true
                 }
                 VirtualKeyCode::PageUp => {
@@ -633,11 +627,17 @@ impl State {
 
         {
             let color_attach = create_color_attachment(&view);
+            let msaa_attach = create_msaa_color_attachment(&view, &self.msaa_texture_view);
+            let color_attachment = if self.init.sample_count == 1 {
+                color_attach
+            } else {
+                msaa_attach
+            };
             let depth_attachment = create_depth_stencil_attachment(&self.depth_texture_view);
 
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("Render Pass"),
-                color_attachments: &[Some(color_attach)],
+                color_attachments: &[Some(color_attachment)],
                 depth_stencil_attachment: Some(depth_attachment),
             });
 
@@ -708,45 +708,6 @@ pub fn create_bind_group_storage(device: &wgpu::Device, shader_stages: Vec<wgpu:
     (layout, bind_group)
 }
 
-pub fn create_bind_group_layout(device: &wgpu::Device, shader_stages: Vec<wgpu::ShaderStages>) -> wgpu::BindGroupLayout {
-    let mut entries = vec![];
-
-    for i in 0..shader_stages.len() {
-        entries.push(wgpu::BindGroupLayoutEntry {
-            binding: i as u32,
-            visibility: shader_stages[i],
-            ty: wgpu::BindingType::Buffer {
-                ty: wgpu::BufferBindingType::Uniform,
-                has_dynamic_offset: false,
-                min_binding_size: None,
-            },
-            count: None,
-        });
-    }
-
-    device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor{
-        entries: &entries,
-        label: Some("Uniform Bind Group Layout"),
-    })
-}
-
-pub fn create_bind_group(device: &wgpu::Device, shader_stages: Vec<wgpu::ShaderStages>, resources: &[wgpu::BindingResource<'_>]) -> ( wgpu::BindGroupLayout, wgpu::BindGroup) {
-    let entries: Vec<_> = resources.iter().enumerate().map(|(i, resource)| {
-        wgpu::BindGroupEntry {
-            binding: i as u32,
-            resource: resource.clone(),
-        }
-    }).collect();
-
-    let layout = create_bind_group_layout(device, shader_stages);
-    let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-        layout: &layout,
-        entries: &entries,
-        label: Some("Uniform Bind Group"),
-    });
-
-    (layout, bind_group)
-}
 
 pub fn create_color_attachment<'a>(texture_view: &'a wgpu::TextureView) -> wgpu::RenderPassColorAttachment<'a> {
     wgpu::RenderPassColorAttachment {
@@ -759,7 +720,37 @@ pub fn create_color_attachment<'a>(texture_view: &'a wgpu::TextureView) -> wgpu:
     }
 }
 
-pub fn create_depth_view(init: &IWgpuInit) -> wgpu::TextureView {
+pub fn create_msaa_texture_view(init: &WgpuInit) -> wgpu::TextureView{
+    let msaa_texture = init.device.create_texture(&wgpu::TextureDescriptor {
+        size: wgpu::Extent3d {
+            width: init.config.width,
+            height: init.config.height,
+            depth_or_array_layers: 1,
+        },
+        mip_level_count: 1,
+        sample_count: init.sample_count,
+        dimension: wgpu::TextureDimension::D2,
+        format: init.config.format,
+        usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+        label: None,
+        view_formats: &[],
+    });
+
+    msaa_texture.create_view(&wgpu::TextureViewDescriptor::default())
+}
+
+pub fn create_msaa_color_attachment<'a>(texture_view: &'a wgpu::TextureView, msaa_view: &'a wgpu::TextureView)
+-> wgpu::RenderPassColorAttachment<'a> {
+    wgpu::RenderPassColorAttachment {
+        view: msaa_view,
+        resolve_target: Some(texture_view),
+        ops: wgpu::Operations {
+            load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+            store: true,
+        },
+    }
+}
+pub fn create_depth_view(init: &WgpuInit) -> wgpu::TextureView {
     let depth_texture = init.device.create_texture(&wgpu::TextureDescriptor {
         size: wgpu::Extent3d {
             width: init.config.width,
