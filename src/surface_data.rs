@@ -3,7 +3,6 @@ use srtm::Tile;
 use std::thread;
 use std::sync::mpsc;
 use std::thread::JoinHandle;
-use std::mem;
 //mod colormap;
 
 #[repr(C)]
@@ -55,40 +54,10 @@ impl Defaultable for Threaded {
 }
 
 impl Threaded {
-    fn transfer(&mut self, lat:u32,long:u32){
-        let (tx, rx) = mpsc::channel();
-        let thread = thread::spawn(move||{
-            let mut map :Vec<Vec<f32>> = vec![];
-            let mut height_min = f32::MAX;
-            let mut height_max = f32::MIN;
-            let worldmap: Tile = Tile::from_file("src/Scotlandhgt/N".to_owned() + &*lat.to_string() +"W00"+ &*long.to_string() +".hgt").unwrap_or(Tile::from_file("src/Scotlandhgt/N00W000.hgt").unwrap());
-
-            for x in 0..3600{
-                let mut p1:Vec<f32> = vec![];
-                for z in 0..3600{
-                    let y =  Tile::get(&worldmap, x as u32, z as u32) as f32;
-                    height_min = if y  < height_min { y } else { height_min };
-                    height_max = if y  > height_max { y } else { height_max };
-                    p1.push(y);
-
-                }
-                map.push(p1);
-            }
-
-            for x in 0..3600 as usize {
-                for z in 0..3600 as usize {
-                    map[x][z] = (map[x][z] as f32 - height_min)/(height_max - height_min);
-                }
-            }
-            tx.send(map).unwrap();
-        });
-        self.thread=thread;
-        self.refer=rx;
-    }
     fn transferwithret(&mut self, lat:u32,long:u32){
-        let tryy = Threaded::default_with_params(lat,long);
-        self.thread=tryy.thread;
-        self.refer=tryy.refer;
+        let transfer = Threaded::default_with_params(lat,long);
+        self.thread=transfer.thread;
+        self.refer=transfer.refer;
     }
 }
 
@@ -99,10 +68,19 @@ pub struct Terrain {
     pub back: [i32; 2],
     pub level_of_detail: u32,
     pub water_level: f32,
-    pub mapdata: Vec<Vec<f32>>,
-    pub mapdata2: Vec<Vec<f32>>,
-    pub done1 :u32,
-    pub done2 :u32,
+    mapdata: Vec<Vec<f32>>,
+    mapdatanextx: Vec<Vec<f32>>,
+    mapdatanextz: Vec<Vec<f32>>,
+    mapdatanextxz: Vec<Vec<f32>>,
+    doneinit :u32,
+    doneinitx :u32,
+    doneinitz :u32,
+    donex :u32,
+    donez :u32,
+    north: bool,
+    east: bool,
+    south: bool,
+    west: bool,
     pub lat :u32,
     pub long :u32,
     pub chunksize:u32,
@@ -110,6 +88,10 @@ pub struct Terrain {
     ethread: Threaded,
     sthread: Threaded,
     wthread: Threaded,
+    nethread: Threaded,
+    esthread: Threaded,
+    swthread: Threaded,
+    wnthread: Threaded,
 
 }
 
@@ -122,6 +104,11 @@ impl Default for Terrain {
             long -=2;
             let souththread = Threaded::default_with_params(lat,long);
             let westthread = Threaded::default_with_params(lat,long);
+            let northeastthread = Threaded::default_with_params(lat,long);
+            let eastsouththread = Threaded::default_with_params(lat,long);
+            long -=2;
+            let southwestthread = Threaded::default_with_params(lat,long);
+            let westnorththread = Threaded::default_with_params(lat,long);
         Self {
             offsets: [0.0, 0.0],
             moves:[1800.0,1800.0],
@@ -129,9 +116,18 @@ impl Default for Terrain {
             level_of_detail: 5,
             water_level: 0.1,
             mapdata: vec![],
-            mapdata2: vec![],
-            done1:0,
-            done2:0,
+            mapdatanextx: vec![],
+            mapdatanextz: vec![],
+            mapdatanextxz: vec![],
+            doneinit:0,
+            doneinitx:0,
+            doneinitz:0,
+            donex:0,
+            donez:0,
+            north: false,
+            east: false,
+            south: false,
+            west: false,
             chunksize:241,
             lat:54,
             long:3,
@@ -139,6 +135,10 @@ impl Default for Terrain {
             ethread: eastthread,
             sthread: souththread,
             wthread: westthread,
+            nethread: northeastthread,
+            esthread: eastsouththread,
+            swthread: southwestthread,
+            wnthread: westnorththread,
         }
     }
 }
@@ -228,9 +228,9 @@ impl Terrain {
         ];
         let ta = vec![0.0f32, 0.3, 0.35, 0.6, 0.9, 1.0];
 
-        if self.done1 == 0 {
+        if self.doneinit == 0 {
             self.find_world_map();
-            self.done1 +=1
+            self.doneinit +=1
         }
 
 
@@ -240,176 +240,156 @@ impl Terrain {
             for z in (0..self.chunksize as usize).step_by(increment_count as usize) {
                 let usex : i32= (x as f32 + self.offsets[0] + self.moves[0])as i32;
                 let usez : i32= (z as f32 + self.offsets[1] + self.moves[1])as i32;
-                //let usez = z as f32 + self.offsets[1] + self.moves[1];
                 let mut y = 0.0;
-                if (usez > 200 && usez <= 3400)&&(usex > 200 && usex <= 3400){
-                    y = self.mapdata[usex as usize][usez as usize];
-                    if self.done1 ==2 {
-                            Threaded::transferwithret(&mut self.nthread,self.lat,self.long+1);
-                            Threaded::transferwithret(&mut self.sthread,self.lat,self.long-1);
-                            Threaded::transferwithret(&mut self.ethread,self.lat+1,self.long);
-                            Threaded::transferwithret(&mut self.wthread,self.lat-1,self.long);
-                            self.done1 +=1;
-                         }
-                }
-                if (usez <= 200 && usez >=0)||(usex <= 200 && usex >=0){
-                    if usez <= 200 && usez >=0{
-                        if self.done2 == 0 {
-                        for received in &self.sthread.refer {
-                            self.mapdata2 = vec![];
-                            self.mapdata2 = received
-                        }
-                        self.done2 +=1;
-                        }
-                         y = self.mapdata[usex as usize][usez as usize];
-                    }
-                    if usex <= 200 && usex >=0{
-                        if self.done2 == 0 {
-                        for received in &self.wthread.refer {
-                            self.mapdata2 = vec![];
-                            self.mapdata2 = received
-                        }
-                        self.done2 +=1;
-                        }
-                         y = self.mapdata[usex as usize][(usez as i32 +self.back[1]) as usize];
-                    }
-                }
-                if (usez < 0 && usez >= -1800)||(usex < 0 && usex >= -1800){
-                    if usez < 0 && usez >= -1800 {
-                        self.back[1] = 3600;
-                        y = self.mapdata2[usex as usize][(usez as i32 + self.back[1]) as usize];
-                    }
-                    if usex < 0 && usex >= -1800 {
-
-                    }
-                }
-                if (usez < -1800)&&(usex < -1800){
-                    y = self.mapdata[usex as usize][usez as usize];
-                    if self.done1 ==2 {
-                            Threaded::transferwithret(&mut self.nthread,self.lat,self.long+1);
-                            Threaded::transferwithret(&mut self.sthread,self.lat,self.long-1);
-                            Threaded::transferwithret(&mut self.ethread,self.lat+1,self.long);
-                            Threaded::transferwithret(&mut self.wthread,self.lat-1,self.long);
-                            self.done1 +=1;
-                         }
-                }
                 match usez as i32 {
                     m if m < -1800 =>{
                             self.moves[1] += 3600.0;
-                            self.back[1] = 0;
                             self.mapdata = vec![];
-                            self.mapdata = self.mapdata2.clone();
-                            self.long -= 1;
-                            self.done1 = 2;
-                            self.done2 = 0;
+                            self.mapdata = self.mapdatanextz.clone();
+                            self.lat -= 1;
+                            self.doneinitz = 2;
+                            self.donez = 0;
+                            self.south = true;
                     }
                     -1800 ..=-1 => {
-                        self.back[1] = 3600;
-                        y = self.mapdata2[usex as usize][(usez as i32 +self.back[1]) as usize];
+                        self.south = true;
 
                     }
                      0 ..=200 => {
-                        if self.done2 == 0 {
-                        for received in &self.sthread.refer {
-                            self.mapdata2 = vec![];
-                            self.mapdata2 = received
+                        if self.donez==0 {
+                            for received in &self.sthread.refer {
+                                self.mapdatanextz = vec![];
+                                self.mapdatanextz = received
+                            }
+
+                            self.donez += 1;
                         }
-                        self.done2 +=1;
-                        }
-                         y = self.mapdata[usex as usize][usez as usize];
                     }
                     201 ..=3400 => {
-
-                        y = self.mapdata[usex as usize][usez as usize];
-                        if self.done1 ==2 {
-                            Threaded::transferwithret(&mut self.nthread,self.lat,self.long+1);
-                            Threaded::transferwithret(&mut self.sthread,self.lat,self.long-1);
-                            self.done1 +=1;
+                        if self.doneinitz ==2 {
+                            if self.long >0 {
+                                Threaded::transferwithret(&mut self.wthread,self.lat-1,self.long);
+                                Threaded::transferwithret(&mut self.nthread,self.lat+1,self.long);
+                            }else{
+                                Threaded::transferwithret(&mut self.wthread,self.lat-1,0);
+                                Threaded::transferwithret(&mut self.nthread,self.lat+1,0);
+                            }
+                            self.doneinitz +=1;
                          }
                     }
                     3401 ..= 3599=>{
-                        if self.done2 == 0 {
-                        for received in &self.nthread.refer {
-                            self.mapdata2 = vec![];
-                            self.mapdata2 = received
+                        if self.donez == 0 {
+                            for received in &self.nthread.refer {
+                                self.mapdatanextz = vec![];
+                                self.mapdatanextz = received
+                            }
+                            self.donez += 1;
                         }
-                        self.done2 +=1;
-                        }
-                        y = self.mapdata[usex as usize][usez as usize];
                     }
-                    3600 ..= 5000=>{
-                        self.back[1] = -3600;
-                        y = self.mapdata2[usex as usize][(usez as i32 + self.back[1])as usize];
+                    3600 ..= 5400=>{
+                        self.north= true;
                     }
                     _ => {
                         self.moves[1] -=3600.0;
-                        self.back[1] = 0;
                         self.mapdata = vec![];
-                        self.mapdata = self.mapdata2.clone();
-                        self.long +=1;
-                        self.done1=2;
-                        self.done2=0;
+                        self.mapdata = self.mapdatanextz.clone();
+                        self.lat +=1;
+                        self.doneinitz=2;
+                        self.donex=0;
+                        self.north= true;
 
-                }}/*
+                }}
                 match usex as i32 {
-                    n if n < -1400 =>{
-                        //self.moves[0] += 3600.0;
-                        //self.back[0] = 0;
+                    n if n < -1800 =>{
+                        self.moves[0] += 3600.0;
                         self.mapdata = vec![];
-                        self.mapdata = self.mapdata2.clone();
-                        self.lat -=1;
-                        self.done1=2;
-                        self.done2=0;
+                        self.mapdata = self.mapdatanextx.clone();
+                        self.long -=1;
+                        self.doneinitx=2;
+                        self.donex=0;
+                        self.west = true
                     }
-                    -1400 ..=-1 => {
-                        self.back[0] += 3600;
-                        y = self.mapdata2[usex as usize][(usez as i32 +self.back[1]) as usize];
-
-
+                    -1800 ..=-1 => {
+                        self.west = true;
                     }
                      0 ..=200 => {
-                        if self.done2 == 0 {
-                        for received in &self.wthread.refer {
-                            self.mapdata2 = vec![];
-                            self.mapdata2 = received
+                        if self.donex==0 {
+                            for received in &self.wthread.refer {
+                                self.mapdatanextx = vec![];
+                                self.mapdatanextx = received
+                            }
+
+                            self.donex += 1;
                         }
-                        self.done2 +=1;
-                        }
-                         y = self.mapdata[usex as usize][(usez as i32 +self.back[1]) as usize];
                     }
-                    201 ..=3400 => {
-                        y = self.mapdata[usex as usize][(usez as i32 +self.back[1]) as usize];
-                        if self.done1 ==2 {
-                            Threaded::transferwithret(&mut self.ethread,self.lat+1,self.long);
-                            Threaded::transferwithret(&mut self.wthread,self.lat-1,self.long);
-                            self.done1 +=1;
+                    201 ..=3400 =>{
+                        if self.doneinitx ==2 {
+                            Threaded::transferwithret(&mut self.ethread,self.lat,self.long+1);
+                            if self.long >0 {
+                                Threaded::transferwithret(&mut self.wthread,self.lat,self.long-1);
+                            }else{
+                                Threaded::transferwithret(&mut self.wthread,self.lat,0);
+                            }
+                            self.doneinitz +=1;
+
+                            self.doneinitx +=1;
                          }
                     }
                     3401 ..= 3599=>{
-                        if self.done2 == 0 {
-                        for received in &self.ethread.refer {
-                            self.mapdata2 = vec![];
-                            self.mapdata2 = received
+                        if self.donex == 0 {
+                            for received in &self.ethread.refer {
+                                self.mapdatanextx = vec![];
+                                self.mapdatanextx = received
+                            }
+                            self.donex += 1;
                         }
-                        self.done2 +=1;
-                        }
-                        y = self.mapdata[usex as usize][(usez as i32 +self.back[1]) as usize];
                     }
-                    3600 ..= 5000=>{
-                        self.back[0] -= 3600;
-                        y = self.mapdata2[usex as usize][(usez as i32 +self.back[1]) as usize];
+                    3600 ..= 5400=>{
+                        self.east =true;
                     }
                     _ => {
                         self.moves[0] -=3600.0;
-                        self.back[0] = 0;
                         self.mapdata = vec![];
-                        self.mapdata = self.mapdata2.clone();
+                        self.mapdata = self.mapdatanextx.clone();
                         self.lat +=1;
-                        self.done1=2;
-                        self.done2=0;
+                        self.doneinitx=2;
+                        self.donex=0;
+                        self.east =true;
 
-                }}*/
+                }}
 
+                if self.south || self.north || self.east || self.west {
+                    if self.south {
+                        if self.east{
+                            y = self.mapdatanextxz[(usex -3600) as usize][(usez + 3600) as usize];
+                        }else if self.west{
+                            y = self.mapdatanextxz[(usex +3600) as usize][(usez + 3600) as usize];
+                        }else{
+                            y = self.mapdatanextz[usex as usize][(usez + 3600) as usize];
+                        }
+                    }
+                    if self.north {
+                        if self.east{
+                            y = self.mapdatanextxz[(usex - 3600) as usize][(usez - 3600) as usize];
+                        }else if self.west{
+                            y = self.mapdatanextxz[(usex +3600) as usize][(usez - 3600) as usize];
+                        }else{
+                            y = self.mapdatanextz[usex as usize][(usez - 3600) as usize];
+                        }
+                    }
+                    if self.east{
+                        y = self.mapdatanextx[(usex - 3600) as usize][usez as usize];
+                    }
+                    if self.west{
+                        y = self.mapdatanextx[(usex + 3600) as usize][usez as usize];
+                    }
+                }else{
+                    y = self.mapdata[usex as usize][usez as usize];
+                }
+                self.north = false;
+                self.east = false;
+                self.south = false;
+                self.west = false;
                 if y < self.water_level {
                     y = self.water_level - 0.01;
                 }
