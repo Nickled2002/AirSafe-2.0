@@ -105,8 +105,8 @@ pub struct Terrain {
 
 impl Default for Terrain {
         fn default() -> Self {
-            let lat =56;
-            let long = 4;
+            let lat =55;
+            let long = 5;
             let initialthread = Threaded::default_with_params(lat,long);
             let norththread = Threaded::default_with_params(lat+1,long);
             let northeastthread = Threaded::default_with_params(lat+1,long-1);
@@ -120,7 +120,7 @@ impl Default for Terrain {
             offsets: [0.0, 0.0],
             moves:[1800.0,1800.0],
             back:[0,0],
-            level_of_detail: 4,
+            level_of_detail: 0,
             water_level: 0.001,
             mapdata: vec![],
             mapdatanextx: vec![],
