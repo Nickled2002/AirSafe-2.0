@@ -429,17 +429,19 @@ impl State {
     pub fn plane_move(&mut self, moves: char) {
         match moves {
             's' => {
-                /*if self.camlook.x < 120.0 {
+                /*
+                if self.camlook.x < 120.0 {
                     self.camlook.x += 3.0;
                 }*/
-                    self.terrain.moves[0] += 10.0;
+                    self.terrain.moves[0] += 2.0;
                     self.update_buffers = true;
             },
-            'n' => {/*
+            'n' => {
+                /*
                 if self.camlook.x > -120.0 {
                     self.camlook.x -= 3.0;
                 }*/
-                    self.terrain.moves[0] -= 10.0;
+                    self.terrain.moves[0] -= 2.0;
                     self.update_buffers = true;
 
             },
@@ -468,7 +470,7 @@ impl State {
                     self.camlook.x = 120.0;
                 }
                 }}*/
-                    self.terrain.moves[1] += 10.0;
+                    self.terrain.moves[1] += 2.0;
                     self.update_buffers = true;
 
                 },
@@ -499,12 +501,18 @@ impl State {
                 self.camlook.x -= 1.0;
                 }
             }*/
-                    self.terrain.moves[1] -= 10.0;
+                    self.terrain.moves[1] -= 2.0;
                     self.update_buffers = true;
 
             },
-            'u' => self.camera.y = self.camera.y+1.0,
-            'd' => self.camera.y = self.camera.y-1.0,
+            'u' => {
+                self.camera.y = self.camera.y+1.0;
+                self.camlook.y = self.camlook.y+1.0;
+            },
+            'd' => {
+                self.camera.y = self.camera.y-1.0;
+                self.camlook.y = self.camlook.y-1.0;
+            },
             'r' => self.camlook.y = self.camlook.y+1.0,
             'f' => self.camlook.y = self.camlook.y-1.0,
             _ => {}
@@ -513,7 +521,7 @@ impl State {
         let up_direction = cgmath::Vector3::unit_y();
 
         let camera_position = (self.camera.x, self.camera.y, self.camera.z).into();
-        let (view_mat, project_mat, vp_mat) = transforms::create_view_projection(
+        let (view_mat, project_mat, _vp_mat) = transforms::create_view_projection(
             camera_position,
             look_direction,
             up_direction,
@@ -710,11 +718,17 @@ pub fn create_bind_group_storage(device: &wgpu::Device, shader_stages: Vec<wgpu:
 
 
 pub fn create_color_attachment<'a>(texture_view: &'a wgpu::TextureView) -> wgpu::RenderPassColorAttachment<'a> {
+    let mut blue = wgpu::Color::BLUE;
+    //light blue
+    blue.r =0.68;
+    blue.g =0.85;
+    blue.b =0.9;
+    blue.a =1.0;
     wgpu::RenderPassColorAttachment {
         view: texture_view,
         resolve_target: None,
         ops: wgpu::Operations {
-            load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+            load: wgpu::LoadOp::Clear(blue),
             store: true,
         },
     }

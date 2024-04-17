@@ -41,7 +41,7 @@ impl Defaultable for Threaded {
 
             for x in 0..3600 as usize {
                 for z in 0..3600 as usize {
-                    map[x][z] = (map[x][z] as f32 - height_min)/(height_max - height_min);
+                    map[x][z] = (map[x][z] as f32 )/(height_max - height_min);
                 }
             }
             tx.send(map).unwrap();
@@ -80,6 +80,10 @@ pub struct Terrain {
     donexw :u32,
     donezn :u32,
     donezs :u32,
+    donese :u32,
+    donesw :u32,
+    donene :u32,
+    donenw :u32,
     north: bool,
     east: bool,
     south: bool,
@@ -87,6 +91,7 @@ pub struct Terrain {
     pub lat :u32,
     pub long :u32,
     pub chunksize:u32,
+    initthread: Threaded,
     nthread: Threaded,
     ethread: Threaded,
     sthread: Threaded,
@@ -100,30 +105,23 @@ pub struct Terrain {
 
 impl Default for Terrain {
         fn default() -> Self {
-            let mut lat =54;
-            let mut long = 3;
-            lat +=1;
-            let norththread = Threaded::default_with_params(lat,long);
-            long -=1;
-            let northeastthread = Threaded::default_with_params(lat,long);
-            lat -=1;
-            let eastthread = Threaded::default_with_params(lat,long);
-            lat -=1;
-            let eastsouththread = Threaded::default_with_params(lat,long);
-            long +=1;
-            let souththread = Threaded::default_with_params(lat,long);
-            long +=1;
-            let southwestthread = Threaded::default_with_params(lat,long);
-            lat +=1;
-            let westthread = Threaded::default_with_params(lat,long);
-            lat +=1;
-            let westnorththread = Threaded::default_with_params(lat,long);
+            let lat =56;
+            let long = 4;
+            let initialthread = Threaded::default_with_params(lat,long);
+            let norththread = Threaded::default_with_params(lat+1,long);
+            let northeastthread = Threaded::default_with_params(lat+1,long-1);
+            let eastthread = Threaded::default_with_params(lat,long-1);
+            let eastsouththread = Threaded::default_with_params(lat-1,long-1);
+            let souththread = Threaded::default_with_params(lat-1,long);
+            let southwestthread = Threaded::default_with_params(lat-1,long+1);
+            let westthread = Threaded::default_with_params(lat,long+1);
+            let westnorththread = Threaded::default_with_params(lat+1,long+1);
         Self {
             offsets: [0.0, 0.0],
             moves:[1800.0,1800.0],
             back:[0,0],
-            level_of_detail: 5,
-            water_level: 0.1,
+            level_of_detail: 4,
+            water_level: 0.001,
             mapdata: vec![],
             mapdatanextx: vec![],
             mapdatanextz: vec![],
@@ -136,13 +134,18 @@ impl Default for Terrain {
             donexw:0,
             donezn:0,
             donezs:0,
+            donese:0,
+            donesw:0,
+            donene:0,
+            donenw:0,
             north: false,
             east: false,
             south: false,
             west: false,
             chunksize:241,
-            lat:54,
-            long:3,
+            lat:lat,
+            long:long,
+            initthread: initialthread,
             nthread: norththread,
             ethread: eastthread,
             sthread: souththread,
@@ -172,6 +175,7 @@ impl Terrain {
         }
         indices
     }
+    /*
     pub fn find_world_map(&mut self) {
         let mut height_min = f32::MAX;
         let mut height_max = f32::MIN;
@@ -190,10 +194,10 @@ impl Terrain {
 
         for x in 0..3600 as usize {
             for z in 0..3600 as usize {
-                self.mapdata[x][z] = (self.mapdata[x][z] - height_min)/(height_max - height_min);
+                self.mapdata[x][z] = (self.mapdata[x][z])/(height_max - height_min);
             }
         }
-    }
+    }*/
     fn color_interp(&mut self, color:&Vec<[f32;3]>, ta:&Vec<f32>, t:f32) -> [f32;3] {
         let len = 6usize;
         let mut res = [0f32;3];
@@ -241,8 +245,9 @@ impl Terrain {
         let ta = vec![0.0f32, 0.3, 0.35, 0.6, 0.9, 1.0];
 
         if self.doneinit == 0 {
-            self.find_world_map();
-            self.doneinit +=1
+            for received in &self.initthread.refer {
+                self.mapdata = received
+            }
         }
 
 
@@ -260,8 +265,12 @@ impl Terrain {
                             self.mapdata = vec![];
                             self.mapdata = self.mapdatanextz.clone();
                             self.lat += 1;
-                            self.doneinitz = 2;
+                            self.doneinitxz =2;
+                            self.doneinitz =2;
+                            self.doneinitx=2;
                             self.donezn = 0;
+                            self.donene = 0;
+                            self.donenw = 0;
                             self.north= true;
                     }
                     -1800 ..=-1 => {
@@ -286,6 +295,14 @@ impl Terrain {
 
                             self.doneinitz +=1;
                         }
+                        if self.doneinitxz ==2 {
+                                Threaded::transferwithret(&mut self.nethread,self.lat+1,self.long-1);
+                                Threaded::transferwithret(&mut self.wnthread,self.lat+1,self.long+1);
+                                Threaded::transferwithret(&mut self.esthread,self.lat-1,self.long-1);
+                                Threaded::transferwithret(&mut self.swthread,self.lat-1,self.long+1);
+
+                            self.doneinitz +=1;
+                        }
                     }
                     3401 ..= 3599=>{
                         if self.donezs == 0 {
@@ -300,13 +317,17 @@ impl Terrain {
                         self.south= true;
                     }
                     _ => {
-                         println!("chunk");
+                        println!("chunk");
                         self.moves[1] -=3600.0;
                         self.mapdata = vec![];
                         self.mapdata = self.mapdatanextz.clone();
                         self.lat -= 1;
-                        self.doneinitz=2;
+                        self.doneinitxz =2;
+                        self.doneinitz =2;
+                        self.doneinitx=2;
                         self.donezs=0;
+                        self.donesw =0;
+                        self.donese = 0;
                         self.south= true;
 
                 }}
@@ -317,8 +338,12 @@ impl Terrain {
                         self.mapdata = vec![];
                         self.mapdata = self.mapdatanextx.clone();
                         self.long +=1;
+                        self.doneinitxz =2;
+                        self.doneinitz =2;
                         self.doneinitx=2;
                         self.donexw=0;
+                        self.donesw =0;
+                        self.donenw = 0;
                         self.west = true
                     }
                     -1800 ..=-1 => {
@@ -338,9 +363,18 @@ impl Terrain {
                         self.doneinitxz = 0;
                         if self.doneinitx ==2 {
                             Threaded::transferwithret(&mut self.ethread,self.lat,self.long-1);
+
                             Threaded::transferwithret(&mut self.wthread,self.lat,self.long+1);
 
                             self.doneinitx +=1;
+                        }
+                        if self.doneinitxz ==2 {
+                                Threaded::transferwithret(&mut self.nethread,self.lat+1,self.long-1);
+                                Threaded::transferwithret(&mut self.wnthread,self.lat+1,self.long+1);
+                                Threaded::transferwithret(&mut self.esthread,self.lat-1,self.long-1);
+                                Threaded::transferwithret(&mut self.swthread,self.lat-1,self.long+1);
+
+                            self.doneinitz +=1;
                         }
                     }
                     3401 ..= 3599=>{
@@ -363,31 +397,35 @@ impl Terrain {
                         if self.long >1 {
                             self.long -= 1;
                         }
+                        self.doneinitxz =2;
+                        self.doneinitz =2;
                         self.doneinitx=2;
                         self.donexe=0;
+                        self.donene = 0;
+                        self.donese = 0;
                         self.east =true;
 
                 }}
 
                 if self.south || self.north || self.east || self.west {
                     if self.south {
-                        if self.east{if self.doneinitxz ==0 {
+                        if self.east{if self.donese ==0 {
                             for received in &self.esthread.refer {
                                 self.mapdatanextxz = vec![];
                                 self.mapdatanextxz = received
                             }
 
-                            self.doneinitx +=1;
+                            self.donese +=1;
                         }
                             y = self.mapdatanextxz[(usex -3600) as usize][(usez - 3600) as usize];
                         }else if self.west{
-                            if self.doneinitxz ==0 {
+                            if self.donesw ==0 {
                             for received in &self.swthread.refer {
                                 self.mapdatanextxz = vec![];
                                 self.mapdatanextxz = received
                             }
 
-                            self.doneinitx +=1;
+                            self.donesw +=1;
                         }
                             y = self.mapdatanextxz[(usex +3600) as usize][(usez - 3600) as usize];
                         }else{
@@ -396,23 +434,23 @@ impl Terrain {
                     }
                     if self.north {
                         if self.east{
-                            if self.doneinitxz ==0 {
+                            if self.donene ==0 {
                             for received in &self.nethread.refer {
                                 self.mapdatanextxz = vec![];
                                 self.mapdatanextxz = received
                             }
 
-                            self.doneinitx +=1;
+                            self.donene +=1;
                         }
                             y = self.mapdatanextxz[(usex - 3600) as usize][(usez + 3600) as usize];
                         }else if self.west{
-                            if self.doneinitxz ==0 {
+                            if self.donenw ==0 {
                             for received in &self.wnthread.refer {
                                 self.mapdatanextxz = vec![];
                                 self.mapdatanextxz = received
                             }
 
-                            self.doneinitx +=1;
+                            self.donenw +=1;
                         }
                             y = self.mapdatanextxz[(usex +3600) as usize][(usez + 3600) as usize];
                         }else{
@@ -432,7 +470,8 @@ impl Terrain {
                 self.east = false;
                 self.south = false;
                 self.west = false;
-                if y < self.water_level {
+                //print!("{} ,,",y);
+               if y < self.water_level {
                     y = self.water_level - 0.01;
                 }
                 let position = [x as f32, y, z as f32];
