@@ -14,23 +14,23 @@ use std::collections::VecDeque;
 
 
 #[path="transforms.rs"]
-mod transforms;
+mod transforms;//transforms:: references transforms.rs file
 #[path="surface_data.rs"]
-mod surface;
+mod surface;//surface:: references surface.rs file
 
-const X_CHUNKS_COUNT: u32 = 5;
-const Z_CHUNKS_COUNT: u32 = 5;
+const X_CHUNKS_COUNT: u32 = 4;
+const Z_CHUNKS_COUNT: u32 = 4;
 
 
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, Pod, Zeroable)]
-pub struct CamPos{
+pub struct CamPos{//initialise CamPos Struct
     pub x:f32,
     pub y:f32,
     pub z:f32
 }
-pub struct RenderPipeline<'a> {
+struct RenderPipeline<'a> {
     pub shader: Option<&'a wgpu::ShaderModule>,
     pub vs_shader: Option<&'a wgpu::ShaderModule>,
     pub fs_shader: Option<&'a wgpu::ShaderModule>,
@@ -38,51 +38,10 @@ pub struct RenderPipeline<'a> {
     pub pipeline_layout: Option<&'a wgpu::PipelineLayout>,
     pub topology: wgpu::PrimitiveTopology,
     pub strip_index_format: Option<wgpu::IndexFormat>,
-    pub cull_mode: Option<wgpu::Face>,
     pub is_depth_stencil: bool,
     pub vs_entry: String,
     pub fs_entry: String,
-}
-
-pub struct WgpuInit {
-    pub instance: wgpu::Instance,
-    pub surface: wgpu::Surface,
-    pub adapter: wgpu::Adapter,
-    pub device: wgpu::Device,
-    pub queue: wgpu::Queue,
-    pub config: wgpu::SurfaceConfiguration,
-    pub size: winit::dpi::PhysicalSize<u32>,
-    pub sample_count: u32,
-}
-
-#[derive(Debug)]
-pub struct FpsCounter {
-    last_second_frames: VecDeque<Instant>,
-    last_print_time: Instant,
-}
-
-struct State {
-    init: WgpuInit,
-    pipeline: wgpu::RenderPipeline,
-    vertex_buffer: Vec<wgpu::Buffer>,
-    index_buffer: wgpu::Buffer,
-    uniform_bind_group: wgpu::BindGroup,
-    uniform_buffer: wgpu::Buffer,
-    view_mat: Matrix4<f32>,
-    project_mat: Matrix4<f32>,
-    depth_texture_view: wgpu::TextureView,
-    msaa_texture_view: wgpu::TextureView,
-    index_length: u32,
-    camera: CamPos,
-    camlook: CamPos,
-    translations: Vec<[f32; 2]>,
-    terrain: surface::Terrain,
-    update_buffers: bool,
-    //update_buffers_view: bool,
-    fps_counter: FpsCounter,
-}
-
-impl Default for RenderPipeline<'_> {
+}impl Default for RenderPipeline<'_> {
     fn default() -> Self {
         Self {
             shader: None,
@@ -92,15 +51,12 @@ impl Default for RenderPipeline<'_> {
             pipeline_layout: None,
             topology: wgpu::PrimitiveTopology::TriangleList,
             strip_index_format: None,
-            cull_mode: None,
             is_depth_stencil: true,
             vs_entry: String::from("vs_main"),
             fs_entry: String::from("fs_main"),
         }
     }
-}
-
-impl RenderPipeline<'_> {
+}impl RenderPipeline<'_> {
     pub fn new(&mut self, init: &WgpuInit) -> wgpu::RenderPipeline {
         if self.shader.is_some() {
             self.vs_shader = self.shader;
@@ -147,8 +103,18 @@ impl RenderPipeline<'_> {
     }
 }
 
-impl WgpuInit {
+
+struct WgpuInit {//struct WgpuInit required variables for inialisation of window with WGPU
+    pub surface: wgpu::Surface,
+    pub device: wgpu::Device,
+    pub queue: wgpu::Queue,
+    pub config: wgpu::SurfaceConfiguration,
+    pub size: winit::dpi::PhysicalSize<u32>,
+    pub sample_count: u32,
+}impl WgpuInit {
+    //implementation of funtions of WgpuInit struct
     pub async fn new(window: &Window, sample_count:u32, limits:Option<wgpu::Limits>) -> Self {
+        //new WgpuInitStruct with params
         let limits_device = limits.unwrap_or(wgpu::Limits::default());
 
         let size = window.inner_size();
@@ -193,10 +159,8 @@ impl WgpuInit {
         };
         surface.configure(&device, &config);
 
-        Self {
-            instance,
+        Self {//initialisation of self based on the values determined above
             surface,
-            adapter,
             device,
             queue,
             config,
@@ -206,14 +170,21 @@ impl WgpuInit {
     }
 }
 
-impl Default for FpsCounter {
+
+
+#[derive(Debug)]
+struct FpsCounter {//FpsCounter srtuct initialisation
+    last_second_frames: VecDeque<Instant>,
+    last_print_time: Instant,
+}
+impl Default for FpsCounter {//point to new when FpsCounter::Default() is called
     fn default() -> Self {
         Self::new()
     }
 }
 
 impl FpsCounter {
-    // Creates a new FpsCounter.
+    //Creates a new FpsCounter.
     pub fn new() -> Self {
         Self {
             last_second_frames: VecDeque::with_capacity(128),
@@ -221,7 +192,7 @@ impl FpsCounter {
         }
     }
 
-    // updates the fps counter and print fps.
+    //Updates the fps counter and print fps.
     pub fn print_fps(&mut self, interval:u64) {
         let now = Instant::now();
         let a_second_ago = now - Duration::from_secs(1);
@@ -232,7 +203,7 @@ impl FpsCounter {
 
         self.last_second_frames.push_back(now);
 
-        // Check if the interval seconds have passed since the last print time
+        //Check if the interval seconds have passed since the last print time
         if now - self.last_print_time >= Duration::from_secs(interval) {
             let fps = self.last_second_frames.len();
             println!("FPS: {}", fps);
@@ -241,6 +212,27 @@ impl FpsCounter {
     }
 }
 
+struct State {
+    //struct State variables all required variables to render a window
+    init: WgpuInit,//sturct WgpuInit
+    pipeline: wgpu::RenderPipeline,//render pipeline
+    vertex_buffer: Vec<wgpu::Buffer>,//vector of vertex buffers its a vector due to the use of chunks
+    index_buffer: wgpu::Buffer,//index buffer
+    uniform_bind_group: wgpu::BindGroup,
+    uniform_buffer: wgpu::Buffer,
+    //view and projection matrix
+    view_mat: Matrix4<f32>,
+    project_mat: Matrix4<f32>,
+    depth_texture_view: wgpu::TextureView,//depth texture
+    index_length: u32,
+    camera: CamPos,//campos struct for positioning of camera
+    camlook: CamPos,//campos struct for looking direction of camera
+    translations: Vec<[f32; 2]>,
+    terrain: surface::Terrain,//terrain struct initialised from surface_data.rs file
+    update_buffers: bool,//update the buffers
+    //update_buffers_view: bool, Not used anymore was used to update the view buffer without having to rerender and find the y values of the terrain thought to be more efficient wasnt
+    fps_counter: FpsCounter,
+}
 impl State {
     async fn new(
         window: &Window,
@@ -250,29 +242,29 @@ impl State {
 
         let shader = init
             .device
-            .create_shader_module(wgpu::include_wgsl!("shader.wgsl"));
+            .create_shader_module(wgpu::include_wgsl!("shader.wgsl"));//attach shader module written in wgsl
 
-        // uniform data
+        //model matrix not needed to be calculated here anymore
         /*let model_mat = transforms::create_transforms(
             [-0.65 * width as f32, 5.0, -0.5 * height as f32],
             [0.0, 0.0, 0.0],
             [1.0, 100.0, 1.0],
         );*/
-        let camera = CamPos{
+        let camera = CamPos{//values added to struct for position of camera
             x:0.0,
             y:1000.0,
             z:0.0,
         };
-        let camlook = CamPos{
+        let camlook = CamPos{//values added to struct for looking direction of camera
             x:0.0,
             y:200.0,
             z:-30.0,
         };
-        let mut terrain = surface::Terrain::default();
-        let mut translations: Vec<[f32; 2]> = vec![];
+        let mut terrain = surface::Terrain::default();//calling default function for terrrain struct
+        let mut translations: Vec<[f32; 2]> = vec![];//empty vectors made mut so it can be filled later
         let mut model_mat: Vec<[f32; 16]> = vec![];
         let chunk_size1 = (terrain.chunksize - 1) as f32;
-        for i in 0..X_CHUNKS_COUNT {
+        for i in 0..X_CHUNKS_COUNT {//going through chunks to create the model matrix and the translation vector that will be used later for the positioning of the chunks
             for j in 0..Z_CHUNKS_COUNT {
                 let xt = -0.5 * X_CHUNKS_COUNT as f32 * chunk_size1 + i as f32 * chunk_size1;
                 let zt = -0.5 * Z_CHUNKS_COUNT as f32 * chunk_size1 + j as f32 * chunk_size1;
@@ -282,18 +274,17 @@ impl State {
                 translations.push([xt, zt]);
             }
         }
-        let model_storage_buffer =
-            init.device
-                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        //Model Matrix Storage Buffer initialised
+        let model_storage_buffer = init.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                     label: Some("Model Matrix Storage Buffer"),
                     contents: cast_slice(&model_mat),
                     usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
                 });
-
+        //CamPos struct values added to the camera postition and look direction respectively
         let camera_position = (camera.x, camera.y, camera.z).into();
         let look_direction = (camlook.x, camlook.y, camlook.z).into();
         let up_direction = cgmath::Vector3::unit_y();
-
+        //Calculation of view matrix projection matrix and viewprojection matrix from transforms.rs file
         let (view_mat, project_mat, vp_mat) = transforms::create_view_projection(
             camera_position,
             look_direction,
@@ -301,16 +292,16 @@ impl State {
             init.config.width as f32 / init.config.height as f32,
         );
 
-        //let mvp_mat = vp_mat * model_mat;
+        //let mvp_mat = vp_mat * model_mat; not needed to be calculated anymore here
 
-        // create vertex uniform buffers
+        //Initiqalisation of vertex uniform buffers
         let vertex_uniform_buffer = init.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                     label: Some("Vertex Uniform Buffer"),
                     contents: cast_slice(vp_mat.as_ref() as &[f32; 16]),
                     usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
 
-        // uniform bind group for vertex shader
+        //And uniform bind group for vertex shader
         let (vertex_bind_group_layout, vertex_bind_group) = create_bind_group_storage(
             &init.device,
             vec![wgpu::ShaderStages::VERTEX, wgpu::ShaderStages::VERTEX],
@@ -323,21 +314,19 @@ impl State {
                 model_storage_buffer.as_entire_binding(),
             ],
         );
-
+        //And vertex buffer layout
         let vertex_buffer_layout = VertexBufferLayout {
             array_stride: mem::size_of::<surface::Vertex>() as wgpu::BufferAddress,
             step_mode: wgpu::VertexStepMode::Vertex,
-            attributes: &wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x3], // pos, col
+            attributes: &wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x3], // position and color added to location 0 and 1 respectively (for shader)
         };
-
-        let pipeline_layout = init
-            .device
-            .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+        //Configuring Layout of render pipeline
+        let pipeline_layout = init.device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Render Pipeline Layout"),
                 bind_group_layouts: &[&vertex_bind_group_layout],
                 push_constant_ranges: &[],
             });
-
+        //Initialised pipeline based on the above layout
         let mut ppl = RenderPipeline {
             shader: Some(&shader),
             pipeline_layout: Some(&pipeline_layout),
@@ -347,32 +336,28 @@ impl State {
         let pipeline = ppl.new(&init);
 
 
-        let depth_texture_view = create_depth_view(&init);
-        let msaa_texture_view = create_msaa_texture_view(&init);
-        let vertex_data = terrain.create_collection_of_terrain_data(
+        let depth_texture_view = create_depth_view(&init);//Creattion o depth texture view no need for multi sample texture view
+        let vertex_data = terrain.create_collection_of_terrain_data(//Calling create.... func from surface_data.rs file with those params
             X_CHUNKS_COUNT,
             Z_CHUNKS_COUNT,
             &translations,
         );
-        let index_data = terrain.create_indices(vertex_data.1, vertex_data.1);
-        let mut vertex_buffer: Vec<wgpu::Buffer> = vec![];
+        let index_data = terrain.create_indices(vertex_data.1, vertex_data.1);//Calculation of indices
+        let mut vertex_buffer: Vec<wgpu::Buffer> = vec![]; //Mutable vector of vertex buffers created filled below
         let mut k: usize = 0;
-        for _i in 0..X_CHUNKS_COUNT {
+        for _i in 0..X_CHUNKS_COUNT {//Iterate through all the chunks
             for _j in 0..Z_CHUNKS_COUNT {
-                let vb = init
-                    .device
-                    .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                let vb = init.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {//retrieve data from vertex data from terrain struct
                         label: Some("Vertex Buffer"),
                         contents: cast_slice(&vertex_data.0[k]),
                         usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
                     });
-                vertex_buffer.push(vb);
+                vertex_buffer.push(vb);//pushed into vertex vector
                 k += 1;
             }
         }
-        let index_buffer = init
-            .device
-            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        //index buffer initialised and index data casted to it
+        let index_buffer = init.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some("Index Buffer"),
                 contents: cast_slice(&index_data),
                 usage: wgpu::BufferUsages::INDEX | wgpu::BufferUsages::COPY_DST,
@@ -380,6 +365,7 @@ impl State {
 
 
         Self {
+            //Variables initialised above added to State struct
             init,
             pipeline,
             vertex_buffer,
@@ -388,7 +374,6 @@ impl State {
             uniform_buffer:vertex_uniform_buffer,
             view_mat,
             project_mat,
-            msaa_texture_view ,
             depth_texture_view,
             index_length: index_data.len() as u32,
             camera,
@@ -401,7 +386,7 @@ impl State {
         }
     }
 
-    fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) {
+    fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) {//Resizing window function
         if new_size.width > 0 && new_size.height > 0 {
             self.init.size = new_size;
             self.init.config.width = new_size.width;
@@ -409,26 +394,18 @@ impl State {
             self.init
                 .surface
                 .configure(&self.init.device, &self.init.config);
-
+            //Determines the new sizes recalculates the matrixes needed for viewing and updates the buffer
             self.project_mat =
                 transforms::create_projection(new_size.width as f32 / new_size.height as f32, true);
             let vp_mat = self.project_mat * self.view_mat;
-            self.init.queue.write_buffer(
-                &self.uniform_buffer,
-                0,
-                cast_slice(vp_mat.as_ref() as &[f32; 16]),
-            );
-
+            self.init.queue.write_buffer(&self.uniform_buffer, 0, cast_slice(vp_mat.as_ref() as &[f32; 16]), );
             self.depth_texture_view = create_depth_view(&self.init);
-            if self.init.sample_count > 1 {
-                self.msaa_texture_view = create_msaa_texture_view(&self.init);
-            }
         }
     }
 
-    pub fn plane_move(&mut self, moves: char) {
+    pub fn plane_move(&mut self, moves: char) {//Plane moving function called from input
         match moves {
-            's' => {
+            'e' => {//North south west and east depending on direction also moves camera to face the moving direction
                 /*
                 if self.camlook.x < 120.0 {
                     self.camlook.x += 3.0;
@@ -436,7 +413,7 @@ impl State {
                     self.terrain.moves[0] += 2.0;
                     self.update_buffers = true;
             },
-            'n' => {
+            'w' => {
                 /*
                 if self.camlook.x > -120.0 {
                     self.camlook.x -= 3.0;
@@ -445,7 +422,7 @@ impl State {
                     self.update_buffers = true;
 
             },
-            'w' => {/*if self.camlook.z == 30.0{if self.camlook.x<0.0{
+            's' => {/*if self.camlook.z == 30.0{if self.camlook.x<0.0{
                 if self.camlook.x< -10.0{self.camlook.x += 3.0;}
                 self.camlook.x += 1.0;
                 }
@@ -474,7 +451,7 @@ impl State {
                     self.update_buffers = true;
 
                 },
-            'e' =>{/*if self.camlook.z == 30.0{
+            'n' =>{/*if self.camlook.z == 30.0{
                 if self.camlook.x<=0.0 {
                 if self.camlook.x > -120.0 {
                     self.camlook.x -= 3.0;
@@ -505,34 +482,35 @@ impl State {
                     self.update_buffers = true;
 
             },
-            'u' => {
+            'u' => {//Change y level completely
                 self.camera.y = self.camera.y+1.0;
                 self.camlook.y = self.camlook.y+1.0;
             },
             'd' => {
                 self.camera.y = self.camera.y-1.0;
                 self.camlook.y = self.camlook.y-1.0;
-            },
-            'r' => self.camlook.y = self.camlook.y+1.0,
-            'f' => self.camlook.y = self.camlook.y-1.0,
+            },//or just the direction the camera is looking at
+            'q' => self.camlook.y = self.camlook.y+1.0,
+            'z' => self.camlook.y = self.camlook.y-1.0,
             _ => {}
         }
         let look_direction = (self.camlook.x,self.camlook.y,self.camlook.z).into();
         let up_direction = cgmath::Vector3::unit_y();
 
         let camera_position = (self.camera.x, self.camera.y, self.camera.z).into();
+        //Looking direction and camera position recalculated
         let (view_mat, project_mat, _vp_mat) = transforms::create_view_projection(
             camera_position,
             look_direction,
             up_direction,
             self.init.config.width as f32 / self.init.config.height as f32,
-        );
+        );//Update the view and projection matries _vp_mat unused thats why it starts with _
 
         self.view_mat=view_mat;
         self.project_mat=project_mat;
     }
-    #[allow(unused_variables)]
     fn input(&mut self, event: &WindowEvent) -> bool {
+        //Match key inputs to the appropriate effects
         match event {
             WindowEvent::KeyboardInput {
                 input:
@@ -543,39 +521,51 @@ impl State {
                 },
                 ..
             } => match keycode {
-                VirtualKeyCode::W => {
-                    self.plane_move('e');
-                    true
-                }
-                VirtualKeyCode::S => {
-                    self.plane_move('w');
-                    true
-                }
-                VirtualKeyCode::A => {
+                VirtualKeyCode::W => {//Move north with w
                     self.plane_move('n');
                     true
                 }
-                VirtualKeyCode::D => {
+                VirtualKeyCode::S => {//Move south with s
                     self.plane_move('s');
                     true
                 }
-                VirtualKeyCode::PageUp => {
+                VirtualKeyCode::A => {//Move west with a
+                    self.plane_move('w');
+                    true
+                }
+                VirtualKeyCode::D => {//Move east with d
+                    self.plane_move('e');
+                    true
+                }
+                VirtualKeyCode::PageUp => {//Plane goes up
                     self.plane_move('u');
                     self.update_buffers= true;
                     true
                 }
-                VirtualKeyCode::PageDown => {
+                VirtualKeyCode::PageDown => {//Plane goes down
                     self.plane_move('d');
                     self.update_buffers= true;
                     true
                 }
-                VirtualKeyCode::Q => {
-                    self.plane_move('r');
+                VirtualKeyCode::Q => {//Look up
+                    self.plane_move('q');
                     self.update_buffers = true;
                     true
                 }
-                VirtualKeyCode::E => {
-                    self.plane_move('f');
+                VirtualKeyCode::E => {//Look down
+                    self.plane_move('z');
+                    self.update_buffers = true;
+                    true
+                }
+                VirtualKeyCode::R => {//Decrease level of detail increase performance
+                    self.terrain.level_of_detail +=1;
+                    self.update_buffers = true;
+                    true
+                }
+                VirtualKeyCode::F => {//Increase level of detail decrease performance
+                    if self.terrain.level_of_detail >0 {
+                        self.terrain.level_of_detail -= 1;
+                    }
                     self.update_buffers = true;
                     true
                 }
@@ -588,12 +578,14 @@ impl State {
     fn update(&mut self) {
         // update buffers:
         if self.update_buffers {
+            //Recalculate vertex data
             let vertex_data = self.terrain.create_collection_of_terrain_data(
             X_CHUNKS_COUNT,
             Z_CHUNKS_COUNT,
             &self.translations,
         );
             let mut k = 0usize;
+            //Iterate through all chunks and add vertex data to the buffer
             for _i in 0..X_CHUNKS_COUNT {
                 for _j in 0..Z_CHUNKS_COUNT {
                     self.init.queue.write_buffer(
@@ -603,49 +595,30 @@ impl State {
                     );
                     k += 1;
                 }
-            }
+            }//re calculate view projection matrix
             let vp_mat = self.project_mat * self.view_mat;
-            self.init.queue.write_buffer(
-                &self.uniform_buffer,
-                0,
-                cast_slice(vp_mat.as_ref() as &[f32; 16]),
-            );
+            self.init.queue.write_buffer(&self.uniform_buffer, 0, cast_slice(vp_mat.as_ref() as &[f32; 16]), );
+            //update index data and write to buffer
             let index_data = self.terrain.create_indices(vertex_data.1, vertex_data.1);
-            self.init
-                .queue
-                .write_buffer(&self.index_buffer, 0, cast_slice(&index_data));
+            self.init.queue.write_buffer(&self.index_buffer, 0, cast_slice(&index_data));
             self.index_length = index_data.len() as u32;
             self.update_buffers = false;
         }
     }
 
     fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
-        //let output = self.init.surface.get_current_frame()?.output;
+        //Render pass renders all data from the buffers
         let output = self.init.surface.get_current_texture()?;
-        let view = output
-            .texture
-            .create_view(&wgpu::TextureViewDescriptor::default());
+        let view = output.texture.create_view(&wgpu::TextureViewDescriptor::default());
 
-        let mut encoder =
-            self.init
-                .device
-                .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                    label: Some("Render Encoder"),
-                });
-
+        let mut encoder = self.init.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("Render Encoder"), });
         {
             let color_attach = create_color_attachment(&view);
-            let msaa_attach = create_msaa_color_attachment(&view, &self.msaa_texture_view);
-            let color_attachment = if self.init.sample_count == 1 {
-                color_attach
-            } else {
-                msaa_attach
-            };
             let depth_attachment = create_depth_stencil_attachment(&self.depth_texture_view);
 
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("Render Pass"),
-                color_attachments: &[Some(color_attachment)],
+                color_attachments: &[Some(color_attach)],
                 depth_stencil_attachment: Some(depth_attachment),
             });
 
@@ -673,10 +646,8 @@ impl State {
         Ok(())
     }
 }
-
-
-
 pub fn create_bind_group_layout_storage(device: &wgpu::Device, shader_stages: Vec<wgpu::ShaderStages>, binding_types: Vec<wgpu::BufferBindingType>) -> wgpu::BindGroupLayout {
+    //function to create bind group layout returns wgpu object BindGroupLayout
     let mut entries = vec![];
 
     for i in 0..shader_stages.len() {
@@ -734,37 +705,7 @@ pub fn create_color_attachment<'a>(texture_view: &'a wgpu::TextureView) -> wgpu:
     }
 }
 
-pub fn create_msaa_texture_view(init: &WgpuInit) -> wgpu::TextureView{
-    let msaa_texture = init.device.create_texture(&wgpu::TextureDescriptor {
-        size: wgpu::Extent3d {
-            width: init.config.width,
-            height: init.config.height,
-            depth_or_array_layers: 1,
-        },
-        mip_level_count: 1,
-        sample_count: init.sample_count,
-        dimension: wgpu::TextureDimension::D2,
-        format: init.config.format,
-        usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-        label: None,
-        view_formats: &[],
-    });
-
-    msaa_texture.create_view(&wgpu::TextureViewDescriptor::default())
-}
-
-pub fn create_msaa_color_attachment<'a>(texture_view: &'a wgpu::TextureView, msaa_view: &'a wgpu::TextureView)
--> wgpu::RenderPassColorAttachment<'a> {
-    wgpu::RenderPassColorAttachment {
-        view: msaa_view,
-        resolve_target: Some(texture_view),
-        ops: wgpu::Operations {
-            load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
-            store: true,
-        },
-    }
-}
-pub fn create_depth_view(init: &WgpuInit) -> wgpu::TextureView {
+fn create_depth_view(init: &WgpuInit) -> wgpu::TextureView {
     let depth_texture = init.device.create_texture(&wgpu::TextureDescriptor {
         size: wgpu::Extent3d {
             width: init.config.width,
@@ -794,14 +735,17 @@ pub fn create_depth_stencil_attachment<'a>(depth_view: &'a wgpu::TextureView) ->
     }
 }
 
+//Application starts
 pub fn run() {
     env_logger::init();
+    //initialise the environment logger
     let event_loop = EventLoop::new();
+    //initialise the window that will be used to display the render
     let window = winit::window::WindowBuilder::new()
         .build(&event_loop)
         .unwrap();
     window.set_title(&*format!("Honours"));
-
+    // initialise the struct "state" thread blocked until state is initialised
     let mut state = pollster::block_on(State::new(
         &window,
     ));
