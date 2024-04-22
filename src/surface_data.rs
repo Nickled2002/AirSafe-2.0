@@ -7,19 +7,19 @@ use std::thread::JoinHandle;
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, Pod, Zeroable)]
-pub struct Vertex {
+pub struct Vertex {//Vertex struct containing color and position
     pub position: [f32; 3],
     pub color: [f32; 3],
 }
-trait Defaultable {
+trait Defaultable {//Default function for creating a thread  with latitude and longitude parameters
     fn default_with_params(lat: u32,long:u32) -> Self;
 }
-struct Threaded {
+struct Threaded {//Struct Threaded containing thread receiver and the thread itself
     pub refer: std::sync::mpsc::Receiver<Vec<Vec<f32>>>,
     pub thread:JoinHandle<()>,
 }
 impl Defaultable for Threaded {
-    fn default_with_params(lat:u32,long:u32) -> Self {
+    fn default_with_params(lat:u32,long:u32) -> Self {//Calculating srtm tile based on lat and long and outputting in a vector of vectors
         let (tx, rx) = mpsc::channel();
         let thread = thread::spawn(move||{
             let mut map :Vec<Vec<f32>> = vec![];
@@ -39,12 +39,12 @@ impl Defaultable for Threaded {
                 map.push(p1);
             }
 
-            for x in 0..3600 as usize {
+            for x in 0..3600 as usize {//normalisation on the entie srtm tile
                 for z in 0..3600 as usize {
                     map[x][z] = (map[x][z] as f32 )/(height_max - height_min);
                 }
             }
-            tx.send(map).unwrap();
+            tx.send(map).unwrap();//Send data to the receiver
         });
         Self {
             refer: rx,
@@ -55,6 +55,7 @@ impl Defaultable for Threaded {
 
 impl Threaded {
     fn transferwithret(&mut self, lat:u32,long:u32){
+        //Transfering ownership from an old thread to a new thread clears memory
         let transfer = Threaded::default_with_params(lat,long);
         self.thread=transfer.thread;
         self.refer=transfer.refer;
@@ -62,13 +63,14 @@ impl Threaded {
 }
 
 
-pub struct Terrain {
-    pub offsets: [f32; 2],
-    pub moves: [f32; 2],
-    pub back: [i32; 2],
-    pub level_of_detail: u32,
+pub struct Terrain {//Public Terrain struct
+    pub offsets: [f32; 2],//Chunk offsets
+    pub moves: [f32; 2],//moving by the keyboard input
+    pub level_of_detail: u32,//varrying level of detail higher level_of_detail larger increments of rendering lower render quality
     pub water_level: f32,
+    //srtm tile adapted to vectors of vectors
     mapdata: Vec<Vec<f32>>,
+    //loading new srtm tiles
     mapdatanextx: Vec<Vec<f32>>,
     mapdatanextz: Vec<Vec<f32>>,
     mapdatanextxz: Vec<Vec<f32>>,
@@ -88,9 +90,11 @@ pub struct Terrain {
     east: bool,
     south: bool,
     west: bool,
+    //latitude and longitude coordinates
     pub lat :u32,
     pub long :u32,
     pub chunksize:u32,
+    //threads used
     initthread: Threaded,
     nthread: Threaded,
     ethread: Threaded,
@@ -107,6 +111,7 @@ impl Default for Terrain {
         fn default() -> Self {
             let lat =55;
             let long = 5;
+            //initialise all threads at runtime correspondng to the correct layout
             let initialthread = Threaded::default_with_params(lat,long);
             let norththread = Threaded::default_with_params(lat+1,long);
             let northeastthread = Threaded::default_with_params(lat+1,long-1);
@@ -118,9 +123,8 @@ impl Default for Terrain {
             let westnorththread = Threaded::default_with_params(lat+1,long+1);
         Self {
             offsets: [0.0, 0.0],
-            moves:[1800.0,1800.0],
-            back:[0,0],
-            level_of_detail: 0,
+            moves:[1800.0,1800.0],//start in the middle of the srtm tile
+            level_of_detail: 3,
             water_level: 0.001,
             mapdata: vec![],
             mapdatanextx: vec![],
@@ -160,10 +164,11 @@ impl Default for Terrain {
 
 impl Terrain {
 
-    pub fn create_indices(&mut self, width: u32, height: u32) -> Vec<u32> {
+    pub fn create_indices(&mut self, width: u32, height: u32) -> (Vec<u32>, Vec<u32>) {
+        //creating the indices based on the height and width of each chunk
         let n_vertices_per_row = height;
         let mut indices:Vec<u32> = vec![];
-
+        let mut texindices:Vec<u32> = vec![];
         for i in 0..width - 1 {
             for j in 0..height - 1 {
                 let idx0 = j + i * n_vertices_per_row;
@@ -171,11 +176,15 @@ impl Terrain {
                 let idx2 = j + 1 + (i + 1) * n_vertices_per_row;
                 let idx3 = j + (i + 1) * n_vertices_per_row;
                 indices.extend([idx0, idx1, idx2, idx2, idx3, idx0]);
+                texindices.extend([idx0, idx1, idx0, idx3]);
+                if i == width - 2 || j == height - 1 {
+                    texindices.extend([idx1, idx2, idx2, idx3]);
+                }
             }
         }
-        indices
+        (indices, texindices)
     }
-    /*
+    /*Adapting srtm tile to vector of vectors moved in theads
     pub fn find_world_map(&mut self) {
         let mut height_min = f32::MAX;
         let mut height_max = f32::MIN;
@@ -199,6 +208,7 @@ impl Terrain {
         }
     }*/
     fn color_interp(&mut self, color:&Vec<[f32;3]>, ta:&Vec<f32>, t:f32) -> [f32;3] {
+        //interpreting color based on the y value
         let len = 6usize;
         let mut res = [0f32;3];
         for i in 0..len - 1 {
@@ -213,12 +223,14 @@ impl Terrain {
     }
 
     fn add_terrain_colors(&mut self, color:&Vec<[f32;3]>, ta:&Vec<f32>, tmin:f32, tmax:f32, t:f32) -> [f32;3] {
+        //adding the terrain color
         let mut tt = if t < tmin { tmin } else if t > tmax { tmax } else { t };
         tt = (tt - tmin)/(tmax - tmin);
         let t1 = self.shift_water_level(ta);
         self.color_interp(color, &t1, tt)
     }
     fn shift_water_level(&mut self, ta:&Vec<f32>) -> Vec<f32> {
+        //adding the water level
         let mut t1 = vec![0f32; 6];
         let r = (1.0 - self.water_level)/(1.0 - ta[1]);
         t1[1] = self.water_level;
@@ -231,10 +243,11 @@ impl Terrain {
 
 
 
-    pub fn create_terrain_data(&mut self) -> (Vec<Vertex>, u32) {
-
+    pub fn create_terrain_data(&mut self) -> (Vec<Vertex>,Vec<Vertex>, u32) {
+        //level of detail used to calculate the increment count
         let increment_count = if self.level_of_detail <= 5 { self.level_of_detail + 1} else { 2*(self.level_of_detail - 2)};
         let vertices_per_row = (self.chunksize - 1)/increment_count + 1;
+        //colormap
         let cdata =  vec![
             [0.055f32, 0.529, 0.8],
             [0.761, 0.698, 0.502],
@@ -242,8 +255,9 @@ impl Terrain {
             [0.353, 0.302, 0.255],
             [1.0, 0.98, 0.98]
         ];
+        let tdata = vec![[1f32, 1.0, 1.0]; 5];
         let ta = vec![0.0f32, 0.3, 0.35, 0.6, 0.9, 1.0];
-
+        //receive the initial srtm tile from the thread at runtime only once
         if self.doneinit == 0 {
             for received in &self.initthread.refer {
                 self.mapdata = received
@@ -252,13 +266,15 @@ impl Terrain {
 
 
         let mut data:Vec<Vertex> = vec![];
+        let mut texturedata:Vec<Vertex> = vec![];
 
         for x in (0..self.chunksize as usize).step_by(increment_count as usize) {
             for z in (0..self.chunksize as usize).step_by(increment_count as usize) {
+                //calculating new x and z values based on the chunk and the how much the user moves
                 let usex : i32= (x as f32 + self.offsets[0] + self.moves[0])as i32;
                 let usez : i32= (z as f32 + self.offsets[1] + self.moves[1])as i32;
                 let mut y = 0.0;
-                match usez as i32 {
+                match usez as i32 {//retieving other srtm data from tiles depending on dirction making sure its only done once
                     m if m < -1800 =>{
                         println!("chunk");
                             self.moves[1] += 3600.0;
@@ -289,7 +305,7 @@ impl Terrain {
                     }
                     201 ..=3400 => {
                         self.doneinitxz = 0;
-                        if self.doneinitz ==2 {
+                        if self.doneinitz ==2 {//new srtm tiles to be created
                                 Threaded::transferwithret(&mut self.sthread,self.lat-1,self.long);
                                 Threaded::transferwithret(&mut self.nthread,self.lat+1,self.long);
 
@@ -406,7 +422,7 @@ impl Terrain {
                         self.east =true;
 
                 }}
-
+                //finding the correct map data to use based on the direction moving in
                 if self.south || self.north || self.east || self.west {
                     if self.south {
                         if self.east{if self.donese ==0 {
@@ -471,21 +487,23 @@ impl Terrain {
                 self.south = false;
                 self.west = false;
                 //print!("{} ,,",y);
-               if y < self.water_level {
+               if y < self.water_level {//making sure the y values to be water values are the same for a smooth water line
                     y = self.water_level - 0.01;
                 }
                 let position = [x as f32, y, z as f32];
                 let color = self.add_terrain_colors(&cdata, &ta, 0.0, 1.0, y);
-
-                data.push(Vertex { position, color });
+                let texturecolor = self.add_terrain_colors(&tdata, &ta, 0.0, 1.0, y);
+                data.push(Vertex { position, color});
+                texturedata.push(Vertex { position, color: texturecolor });
             }
         }
-    (data,vertices_per_row)
+    (data, texturedata, vertices_per_row)
     }
-    pub fn create_collection_of_terrain_data(&mut self, x_chunks:u32, z_chunks:u32, translations:&Vec<[f32;2]>) -> (Vec<Vec<Vertex>>, u32) {
+    pub fn create_collection_of_terrain_data(&mut self, x_chunks:u32, z_chunks:u32, translations:&Vec<[f32;2]>) -> (Vec<Vec<Vertex>>,Vec<Vec<Vertex>>, u32) {
         let mut data:Vec<Vec<Vertex>> = vec![];
+        let mut texturedata:Vec<Vec<Vertex>> = vec![];
         let mut vertices_per_row = 0u32;
-
+        //going through all the chunks and calculating the function to calculate the y values
         let mut k:u32 = 0;
         for _i in 0..x_chunks {
             //self.level_of_detail=5;
@@ -493,11 +511,12 @@ impl Terrain {
                 self.offsets = translations[k as usize];
                 let dd = self.create_terrain_data();
                 data.push(dd.0);
-                vertices_per_row = dd.1;
+                texturedata.push(dd.1);
+                vertices_per_row = dd.2;
                 k += 1;
             }
         }
-        (data, vertices_per_row)
+        (data, texturedata, vertices_per_row)
     }
 
 

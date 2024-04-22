@@ -1,4 +1,4 @@
-use std:: {iter, mem };
+use std:: {collections::VecDeque,iter, mem };
 use cgmath::Matrix4;
 use wgpu::util::DeviceExt;
 use winit::{
@@ -9,7 +9,6 @@ use winit::{
 use bytemuck::{cast_slice, Pod, Zeroable};
 use wgpu::VertexBufferLayout;
 use std::time::{Instant, Duration};
-use std::collections::VecDeque;
 
 
 
@@ -30,7 +29,7 @@ pub struct CamPos{//initialise CamPos Struct
     pub y:f32,
     pub z:f32
 }
-struct RenderPipeline<'a> {
+struct RenderPipeline<'a> {// render pipeline struct created incase a second render pipeline is required such as changing the view to a wireframe or the color
     pub shader: Option<&'a wgpu::ShaderModule>,
     pub vs_shader: Option<&'a wgpu::ShaderModule>,
     pub fs_shader: Option<&'a wgpu::ShaderModule>,
@@ -57,7 +56,7 @@ struct RenderPipeline<'a> {
         }
     }
 }impl RenderPipeline<'_> {
-    pub fn new(&mut self, init: &WgpuInit) -> wgpu::RenderPipeline {
+    pub fn new(&mut self, init: &WgpuInit) -> wgpu::RenderPipeline {//new render pipeline stuct initialisation
         if self.shader.is_some() {
             self.vs_shader = self.shader;
             self.fs_shader = self.shader;
@@ -215,16 +214,22 @@ impl FpsCounter {
 struct State {
     //struct State variables all required variables to render a window
     init: WgpuInit,//sturct WgpuInit
+    texture_pipeline: wgpu::RenderPipeline,
     pipeline: wgpu::RenderPipeline,//render pipeline
     vertex_buffer: Vec<wgpu::Buffer>,//vector of vertex buffers its a vector due to the use of chunks
+    vertex_texture_buffer: Vec<wgpu::Buffer>,
     index_buffer: wgpu::Buffer,//index buffer
+    tex_index_buffer: wgpu::Buffer,
     uniform_bind_group: wgpu::BindGroup,
+    uniform_texture_bind_group: wgpu::BindGroup,
     uniform_buffer: wgpu::Buffer,
     //view and projection matrix
     view_mat: Matrix4<f32>,
     project_mat: Matrix4<f32>,
     depth_texture_view: wgpu::TextureView,//depth texture
     index_length: u32,
+    texindex_length: u32,
+    plot_type: u32,
     camera: CamPos,//campos struct for positioning of camera
     camlook: CamPos,//campos struct for looking direction of camera
     translations: Vec<[f32; 2]>,
@@ -252,7 +257,7 @@ impl State {
         );*/
         let camera = CamPos{//values added to struct for position of camera
             x:0.0,
-            y:1000.0,
+            y:200.0,
             z:0.0,
         };
         let camlook = CamPos{//values added to struct for looking direction of camera
@@ -314,6 +319,18 @@ impl State {
                 model_storage_buffer.as_entire_binding(),
             ],
         );
+        let (vertex_texture_bind_group_layout, vertex_texture_bind_group) = create_bind_group_storage(
+            &init.device,
+            vec![wgpu::ShaderStages::VERTEX, wgpu::ShaderStages::VERTEX],
+            vec![
+                wgpu::BufferBindingType::Uniform,
+                wgpu::BufferBindingType::Storage { read_only: true },
+            ],
+            &[
+                vertex_uniform_buffer.as_entire_binding(),
+                model_storage_buffer.as_entire_binding(),
+            ],
+        );
         //And vertex buffer layout
         let vertex_buffer_layout = VertexBufferLayout {
             array_stride: mem::size_of::<surface::Vertex>() as wgpu::BufferAddress,
@@ -334,6 +351,28 @@ impl State {
             ..Default::default()
         };
         let pipeline = ppl.new(&init);
+        let vertex_texture_buffer_layout = VertexBufferLayout {
+            array_stride: mem::size_of::<surface::Vertex>() as wgpu::BufferAddress,
+            step_mode: wgpu::VertexStepMode::Vertex,
+            attributes: &wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x3], // pos, col
+        };
+
+        let pipeline_texture_layout =
+            init.device
+                .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                    label: Some("Render Texture Pipeline Layout"),
+                    bind_group_layouts: &[&vertex_texture_bind_group_layout],
+                    push_constant_ranges: &[],
+                });
+
+        let mut pplt = RenderPipeline {
+            topology: wgpu::PrimitiveTopology::LineList,
+            shader: Some(&shader),
+            pipeline_layout: Some(&pipeline_texture_layout),
+            vertex_buffer_layout: &[vertex_texture_buffer_layout],
+            ..Default::default()
+        };
+        let pipeline_texture = pplt.new(&init);
 
 
         let depth_texture_view = create_depth_view(&init);//Creattion o depth texture view no need for multi sample texture view
@@ -342,8 +381,9 @@ impl State {
             Z_CHUNKS_COUNT,
             &translations,
         );
-        let index_data = terrain.create_indices(vertex_data.1, vertex_data.1);//Calculation of indices
+        let index_data = terrain.create_indices(vertex_data.2, vertex_data.2);//Calculation of indices
         let mut vertex_buffer: Vec<wgpu::Buffer> = vec![]; //Mutable vector of vertex buffers created filled below
+        let mut vertex_texture_buffer: Vec<wgpu::Buffer> = vec![];
         let mut k: usize = 0;
         for _i in 0..X_CHUNKS_COUNT {//Iterate through all the chunks
             for _j in 0..Z_CHUNKS_COUNT {
@@ -352,14 +392,27 @@ impl State {
                         contents: cast_slice(&vertex_data.0[k]),
                         usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
                     });
+                let vtb = init
+                    .device
+                    .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                        label: Some("Vertex Texture Buffer"),
+                        contents: cast_slice(&vertex_data.1[k]),
+                        usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+                    });
                 vertex_buffer.push(vb);//pushed into vertex vector
+                vertex_texture_buffer.push(vtb);
                 k += 1;
             }
         }
         //index buffer initialised and index data casted to it
         let index_buffer = init.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some("Index Buffer"),
-                contents: cast_slice(&index_data),
+                contents: cast_slice(&index_data.0),
+                usage: wgpu::BufferUsages::INDEX | wgpu::BufferUsages::COPY_DST,
+            });
+        let tex_index_buffer = init.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("Index Buffer"),
+                contents: cast_slice(&index_data.1),
                 usage: wgpu::BufferUsages::INDEX | wgpu::BufferUsages::COPY_DST,
             });
 
@@ -368,18 +421,24 @@ impl State {
             //Variables initialised above added to State struct
             init,
             pipeline,
+            texture_pipeline: pipeline_texture,
             vertex_buffer,
+            vertex_texture_buffer: vertex_texture_buffer,
             index_buffer,
-            uniform_bind_group:vertex_bind_group,
+            tex_index_buffer: tex_index_buffer,
+            uniform_bind_group: vertex_bind_group,
+            uniform_texture_bind_group: vertex_texture_bind_group,
             uniform_buffer:vertex_uniform_buffer,
             view_mat,
             project_mat,
             depth_texture_view,
-            index_length: index_data.len() as u32,
+            index_length: index_data.0.len() as u32,
+            texindex_length: index_data.1.len() as u32,
             camera,
             camlook,
             translations,
             terrain,
+            plot_type: 0,
             update_buffers: false,
             //update_buffers_view: false,
             fps_counter: FpsCounter::default(),
@@ -391,12 +450,9 @@ impl State {
             self.init.size = new_size;
             self.init.config.width = new_size.width;
             self.init.config.height = new_size.height;
-            self.init
-                .surface
-                .configure(&self.init.device, &self.init.config);
+            self.init.surface.configure(&self.init.device, &self.init.config);
             //Determines the new sizes recalculates the matrixes needed for viewing and updates the buffer
-            self.project_mat =
-                transforms::create_projection(new_size.width as f32 / new_size.height as f32, true);
+            self.project_mat = transforms::create_projection(new_size.width as f32 / new_size.height as f32, true);
             let vp_mat = self.project_mat * self.view_mat;
             self.init.queue.write_buffer(&self.uniform_buffer, 0, cast_slice(vp_mat.as_ref() as &[f32; 16]), );
             self.depth_texture_view = create_depth_view(&self.init);
@@ -406,78 +462,21 @@ impl State {
     pub fn plane_move(&mut self, moves: char) {//Plane moving function called from input
         match moves {
             'e' => {//North south west and east depending on direction also moves camera to face the moving direction
-                /*
-                if self.camlook.x < 120.0 {
-                    self.camlook.x += 3.0;
-                }*/
                     self.terrain.moves[0] += 2.0;
                     self.update_buffers = true;
             },
             'w' => {
-                /*
-                if self.camlook.x > -120.0 {
-                    self.camlook.x -= 3.0;
-                }*/
+
                     self.terrain.moves[0] -= 2.0;
                     self.update_buffers = true;
 
             },
-            's' => {/*if self.camlook.z == 30.0{if self.camlook.x<0.0{
-                if self.camlook.x< -10.0{self.camlook.x += 3.0;}
-                self.camlook.x += 1.0;
-                }
-                if self.camlook.x>0.0{
-                if self.camlook.x> 10.0{self.camlook.x -= 3.0;}
-                self.camlook.x -= 1.0;
-                }}
-                if self.camlook.z == -30.0{
-                if self.camlook.x<=0.0 {
-                if self.camlook.x > -120.0 {
-                    self.camlook.x -= 3.0;
-                }
-                if self.camlook.x < -119.0{
-                    self.camlook.z = 30.0;
-                    self.camlook.x =-120.0;
-                }}if self.camlook.x>0.0 {
-                if self.camlook.x < 120.0 {
-                    self.camlook.x += 3.0;
-                }
-                if self.camlook.x > 119.0 {
-                    self.camlook.z = 30.0;
-                    self.camlook.x = 120.0;
-                }
-                }}*/
+            's' => {
                     self.terrain.moves[1] += 2.0;
                     self.update_buffers = true;
 
                 },
-            'n' =>{/*if self.camlook.z == 30.0{
-                if self.camlook.x<=0.0 {
-                if self.camlook.x > -120.0 {
-                    self.camlook.x -= 3.0;
-                }
-                if self.camlook.x < -119.0{
-                    self.camlook.z = -30.0;
-                    self.camlook.x =-120.0;
-                }}if self.camlook.x>0.0 {
-                if self.camlook.x < 120.0 {
-                    self.camlook.x += 3.0;
-                }
-                if self.camlook.x > 119.0 {
-                    self.camlook.z = -30.0;
-                    self.camlook.x = 120.0;
-                }
-                }}
-                if self.camlook.z == -30.0{
-                if self.camlook.x<0.0{
-                if self.camlook.x< -10.0{self.camlook.x += 3.0;}
-                self.camlook.x += 1.0;
-                }
-                if self.camlook.x>0.0{
-                if self.camlook.x> 10.0{self.camlook.x -= 3.0;}
-                self.camlook.x -= 1.0;
-                }
-            }*/
+            'n' =>{
                     self.terrain.moves[1] -= 2.0;
                     self.update_buffers = true;
 
@@ -485,13 +484,18 @@ impl State {
             'u' => {//Change y level completely
                 self.camera.y = self.camera.y+1.0;
                 self.camlook.y = self.camlook.y+1.0;
+                self.update_buffers = true;
+
             },
             'd' => {
                 self.camera.y = self.camera.y-1.0;
                 self.camlook.y = self.camlook.y-1.0;
+                self.update_buffers = true;
+
             },//or just the direction the camera is looking at
             'q' => self.camlook.y = self.camlook.y+1.0,
             'z' => self.camlook.y = self.camlook.y-1.0,
+            'c' => self.update_buffers = true,
             _ => {}
         }
         let look_direction = (self.camlook.x,self.camlook.y,self.camlook.z).into();
@@ -529,6 +533,11 @@ impl State {
                     self.plane_move('s');
                     true
                 }
+                VirtualKeyCode::Space => {
+                    self.plot_type = (self.plot_type + 1) % 2;
+                    self.update_buffers = true;
+                    true
+                }
                 VirtualKeyCode::A => {//Move west with a
                     self.plane_move('w');
                     true
@@ -539,12 +548,83 @@ impl State {
                 }
                 VirtualKeyCode::PageUp => {//Plane goes up
                     self.plane_move('u');
-                    self.update_buffers= true;
                     true
                 }
                 VirtualKeyCode::PageDown => {//Plane goes down
                     self.plane_move('d');
-                    self.update_buffers= true;
+                    true
+                }VirtualKeyCode::Left => {//Plane goes down
+                    if self.camlook.x < 120.0 {
+                        self.camlook.x += 3.0;
+                    }
+                    self.plane_move('c');
+                    true
+                }
+                VirtualKeyCode::Right => {//Plane goes down
+                    if self.camlook.x > -120.0 {
+                        self.camlook.x -= 3.0;
+                    }
+                    self.plane_move('c');
+                    true
+                }
+                VirtualKeyCode::Down => {//Plane goes down
+                    if self.camlook.z == 30.0{if self.camlook.x<0.0 {
+                        if self.camlook.x < -10.0 { self.camlook.x += 3.0; }
+                        self.camlook.x += 1.0;
+                    }
+                    if self.camlook.x>0.0 {
+                        if self.camlook.x > 10.0 { self.camlook.x -= 3.0; }
+                        self.camlook.x -= 1.0;
+                    }}
+                    if self.camlook.z == -30.0{
+                    if self.camlook.x<=0.0 {
+                    if self.camlook.x > -120.0 {
+                        self.camlook.x -= 3.0;
+                    }
+                    if self.camlook.x < -119.0 {
+                        self.camlook.z = 30.0;
+                        self.camlook.x = -120.0;
+                    }}if self.camlook.x>0.0 {
+                        if self.camlook.x < 120.0 {
+                            self.camlook.x += 3.0;
+                        }
+                        if self.camlook.x > 119.0 {
+                            self.camlook.z = 30.0;
+                            self.camlook.x = 120.0;
+                        }
+                    }}
+                    self.plane_move('c');
+                    true
+                }
+                VirtualKeyCode::Up => {//Plane goes down
+                    if self.camlook.z == 30.0{
+                        if self.camlook.x<=0.0 {
+                            if self.camlook.x > -120.0 {
+                                self.camlook.x -= 3.0;
+                            }
+                        if self.camlook.x < -119.0{
+                            self.camlook.z = -30.0;
+                            self.camlook.x =-120.0;
+                        }}if self.camlook.x>0.0 {
+                            if self.camlook.x < 120.0 {
+                                self.camlook.x += 3.0;
+                        }
+                        if self.camlook.x > 119.0 {
+                            self.camlook.z = -30.0;
+                            self.camlook.x = 120.0;
+                        }
+                        }}
+                        if self.camlook.z == -30.0{
+                        if self.camlook.x<0.0{
+                        if self.camlook.x< -10.0{self.camlook.x += 3.0;}
+                        self.camlook.x += 1.0;
+                        }
+                        if self.camlook.x>0.0{
+                        if self.camlook.x> 10.0{self.camlook.x -= 3.0;}
+                            self.camlook.x -= 1.0;
+                        }
+                        }
+                    self.plane_move('c');
                     true
                 }
                 VirtualKeyCode::Q => {//Look up
@@ -593,20 +673,27 @@ impl State {
                         0,
                         cast_slice(&vertex_data.0[k]),
                     );
+                    self.init.queue.write_buffer(
+                        &self.vertex_texture_buffer[k],
+                        0,
+                        cast_slice(&vertex_data.1[k]),
+                    );
                     k += 1;
                 }
             }//re calculate view projection matrix
             let vp_mat = self.project_mat * self.view_mat;
             self.init.queue.write_buffer(&self.uniform_buffer, 0, cast_slice(vp_mat.as_ref() as &[f32; 16]), );
             //update index data and write to buffer
-            let index_data = self.terrain.create_indices(vertex_data.1, vertex_data.1);
-            self.init.queue.write_buffer(&self.index_buffer, 0, cast_slice(&index_data));
-            self.index_length = index_data.len() as u32;
+            let index_data = self.terrain.create_indices(vertex_data.2, vertex_data.2);
+            self.init.queue.write_buffer(&self.index_buffer, 0, cast_slice(&index_data.0));
+            self.init.queue.write_buffer(&self.tex_index_buffer, 0, cast_slice(&index_data.1));
+            self.index_length = index_data.0.len() as u32;
+            self.texindex_length = index_data.1.len() as u32;
             self.update_buffers = false;
         }
     }
 
-    fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
+     fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
         //Render pass renders all data from the buffers
         let output = self.init.surface.get_current_texture()?;
         let view = output.texture.create_view(&wgpu::TextureViewDescriptor::default());
@@ -622,31 +709,53 @@ impl State {
                 depth_stencil_attachment: Some(depth_attachment),
             });
 
-            render_pass.set_pipeline(&self.pipeline);
-            render_pass.set_bind_group(0, &self.uniform_bind_group, &[]);
+            let plot_type = if self.plot_type == 0 {
+                "shape"
+            }else{
+                "both"
+            };
+             if plot_type == "shape" || plot_type == "both" {
+                 render_pass.set_pipeline(&self.pipeline);
+                 render_pass.set_bind_group(0, &self.uniform_bind_group, &[]);
+                 let mut k: u32 = 0;
+                 for _i in 0..X_CHUNKS_COUNT {
+                     for _j in 0..Z_CHUNKS_COUNT {
+                         render_pass.set_vertex_buffer(0, self.vertex_buffer[k as usize].slice(..));
+                         render_pass.set_index_buffer(
+                             self.index_buffer.slice(..),
+                             wgpu::IndexFormat::Uint32,
+                         );
+                         render_pass.draw_indexed(0..self.index_length, 0, k..k + 1);
+                         k += 1;
+                     }
+                 }
+             }
+            if plot_type == "both" {
+                render_pass.set_pipeline(&self.texture_pipeline);
+                render_pass.set_bind_group(0, &self.uniform_texture_bind_group, &[]);
 
                 let mut k: u32 = 0;
                 for _i in 0..X_CHUNKS_COUNT {
                     for _j in 0..Z_CHUNKS_COUNT {
-                        render_pass.set_vertex_buffer(0, self.vertex_buffer[k as usize].slice(..));
+                        render_pass
+                            .set_vertex_buffer(0, self.vertex_texture_buffer[k as usize].slice(..));
                         render_pass.set_index_buffer(
-                            self.index_buffer.slice(..),
+                            self.tex_index_buffer.slice(..),
                             wgpu::IndexFormat::Uint32,
                         );
-                        render_pass.draw_indexed(0..self.index_length, 0, k..k + 1);
+                        render_pass.draw_indexed(0..self.texindex_length, 0, k..k + 1);
                         k += 1;
                     }
                 }
+            }
         }
-
         self.fps_counter.print_fps(5);
         self.init.queue.submit(iter::once(encoder.finish()));
         output.present();
 
         Ok(())
     }
-}
-pub fn create_bind_group_layout_storage(device: &wgpu::Device, shader_stages: Vec<wgpu::ShaderStages>, binding_types: Vec<wgpu::BufferBindingType>) -> wgpu::BindGroupLayout {
+}pub fn create_bind_group_layout_storage(device: &wgpu::Device, shader_stages: Vec<wgpu::ShaderStages>, binding_types: Vec<wgpu::BufferBindingType>) -> wgpu::BindGroupLayout {
     //function to create bind group layout returns wgpu object BindGroupLayout
     let mut entries = vec![];
 
