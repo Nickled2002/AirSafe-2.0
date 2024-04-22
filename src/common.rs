@@ -649,6 +649,15 @@ impl State {
                     self.update_buffers = true;
                     true
                 }
+                VirtualKeyCode::LControl => {//Increase level of detail decrease performance
+                    if self.terrain.minimised == true {
+                        self.terrain.minimised = false;
+                    }else{
+                        self.terrain.minimised = true;
+                    }
+                    self.update_buffers = true;
+                    true
+                }
                 _ => false,
             },
             _ => false,
