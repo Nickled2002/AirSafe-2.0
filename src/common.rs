@@ -245,10 +245,7 @@ impl State {
     ) -> Self {
         let init = WgpuInit::new(&window,1, None).await;
 
-        let shader = init
-            .device
-            .create_shader_module(wgpu::include_wgsl!("shader.wgsl"));//attach shader module written in wgsl
-
+        let shader = init.device.create_shader_module(wgpu::include_wgsl!("shader.wgsl"));//attach shader module written in wgsl
         //model matrix not needed to be calculated here anymore
         /*let model_mat = transforms::create_transforms(
             [-0.65 * width as f32, 5.0, -0.5 * height as f32],
@@ -257,12 +254,12 @@ impl State {
         );*/
         let camera = CamPos{//values added to struct for position of camera
             x:0.0,
-            y:200.0,
+            y:100.0,
             z:0.0,
         };
         let camlook = CamPos{//values added to struct for looking direction of camera
             x:0.0,
-            y:200.0,
+            y:100.0,
             z:-30.0,
         };
         let mut terrain = surface::Terrain::default();//calling default function for terrrain struct
@@ -305,6 +302,7 @@ impl State {
                     contents: cast_slice(vp_mat.as_ref() as &[f32; 16]),
                     usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
+
 
         //And uniform bind group for vertex shader
         let (vertex_bind_group_layout, vertex_bind_group) = create_bind_group_storage(
@@ -553,14 +551,14 @@ impl State {
                 VirtualKeyCode::PageDown => {//Plane goes down
                     self.plane_move('d');
                     true
-                }VirtualKeyCode::Left => {//Plane goes down
+                }VirtualKeyCode::Right => {//Plane goes down
                     if self.camlook.x < 120.0 {
                         self.camlook.x += 3.0;
                     }
                     self.plane_move('c');
                     true
                 }
-                VirtualKeyCode::Right => {//Plane goes down
+                VirtualKeyCode::Left => {//Plane goes down
                     if self.camlook.x > -120.0 {
                         self.camlook.x -= 3.0;
                     }
@@ -638,7 +636,9 @@ impl State {
                     true
                 }
                 VirtualKeyCode::R => {//Decrease level of detail increase performance
-                    self.terrain.level_of_detail +=1;
+                    if self.terrain.level_of_detail <7 {
+                        self.terrain.level_of_detail += 1;
+                    }
                     self.update_buffers = true;
                     true
                 }

@@ -4,6 +4,27 @@ use std::thread;
 use std::sync::mpsc;
 use std::thread::JoinHandle;
 //mod colormap;
+#[repr(C)]
+#[derive(Copy, Clone, Debug, Pod, Zeroable)]
+pub struct Light {//light structure contains fields for light calculations
+    color: [f32; 4],
+    specular_color : [f32; 4],
+    ambient_intensity: f32,
+    diffuse_intensity :f32,
+    specular_intensity: f32,
+    specular_shininess: f32,
+}
+
+pub fn light(c:[f32; 3], sc:[f32;3], ai: f32, di: f32, si: f32, ss: f32) -> Light {//color specular color converted to f32;4
+    Light {
+        color:[c[0], c[1], c[2], 1.0],
+        specular_color: [sc[0], sc[1], sc[2], 1.0],
+        ambient_intensity: ai,
+        diffuse_intensity: di,
+        specular_intensity: si,
+        specular_shininess: ss,
+    }
+}
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, Pod, Zeroable)]
@@ -124,7 +145,7 @@ impl Default for Terrain {
         Self {
             offsets: [0.0, 0.0],
             moves:[1800.0,1800.0],//start in the middle of the srtm tile
-            level_of_detail: 3,
+            level_of_detail: 0,
             water_level: 0.001,
             mapdata: vec![],
             mapdatanextx: vec![],
@@ -184,7 +205,7 @@ impl Terrain {
         }
         (indices, texindices)
     }
-    /*Adapting srtm tile to vector of vectors moved in theads
+    //Adapting srtm tile to vector of vectors moved in theads
     pub fn find_world_map(&mut self) {
         let mut height_min = f32::MAX;
         let mut height_max = f32::MIN;
@@ -206,7 +227,7 @@ impl Terrain {
                 self.mapdata[x][z] = (self.mapdata[x][z])/(height_max - height_min);
             }
         }
-    }*/
+    }
     fn color_interp(&mut self, color:&Vec<[f32;3]>, ta:&Vec<f32>, t:f32) -> [f32;3] {
         //interpreting color based on the y value
         let len = 6usize;
