@@ -1,6 +1,7 @@
 #![allow(dead_code)]
-///NOT USED ANYMORE
+///NOT USED ANYMORE MOVED TO SURFACE DATA
 pub fn color_interp(colors:[[f32;3];11], min:f32, max:f32, mut t:f32) -> [f32; 3]{
+    //used to determine the color based on the y value
     if t < min {
         t = min;
     }
@@ -25,7 +26,7 @@ pub fn color_interp(colors:[[f32;3];11], min:f32, max:f32, mut t:f32) -> [f32; 3
 }
 
 pub fn colormap_data(colormap_name: &str) -> [[f32; 3]; 11] {
-    let colors = match colormap_name {
+    let colors = match colormap_name {//pre configed color maps
         "mountain" => [[0.0,0.0,1.0],[0.7,0.7,0.5],[0.0,1.0,0.0],[0.0,1.0,0.0],[0.25,0.16,0.1],[0.25,0.16,0.1],
             [0.25,0.16,0.1],[0.25,0.16,0.1],[0.25,0.16,0.1],[1.0,1.0,1.0],[1.0,1.0,1.0]],
         "test" =>[[0.0000,0.4627,0.0275],[0.0000,0.3216,0.1176],[0.0000,0.1686,0.2196],[0.0000,0.0392,0.3098],
