@@ -17,8 +17,8 @@ mod transforms;//transforms:: references transforms.rs file
 #[path="surface_data.rs"]
 mod surface;//surface:: references surface.rs file
 
-const X_CHUNKS_COUNT: u32 = 4;
-const Z_CHUNKS_COUNT: u32 = 4;
+const X_CHUNKS_COUNT: u32 = 2;
+const Z_CHUNKS_COUNT: u32 = 2;
 
 
 
@@ -255,7 +255,7 @@ impl State {
         let camera = CamPos{//values added to struct for position of camera
             x:0.0,
             y:100.0,
-            z:0.0,
+            z:200.0,
         };
         let camlook = CamPos{//values added to struct for looking direction of camera
             x:0.0,
@@ -460,22 +460,25 @@ impl State {
     pub fn plane_move(&mut self, moves: char) {//Plane moving function called from input
         match moves {
             'e' => {//North south west and east depending on direction also moves camera to face the moving direction
-                    self.terrain.moves[0] += 2.0;
+                let increment_count = if self.terrain.level_of_detail <= 5 { self.terrain.level_of_detail + 1} else { 2*(self.terrain.level_of_detail - 2)};
+                    self.terrain.moves[0] += increment_count as f32;
                     self.update_buffers = true;
             },
             'w' => {
-
-                    self.terrain.moves[0] -= 2.0;
+                    let increment_count = if self.terrain.level_of_detail <= 5 { self.terrain.level_of_detail + 1} else { 2*(self.terrain.level_of_detail - 2)};
+                    self.terrain.moves[0] -= increment_count as f32;
                     self.update_buffers = true;
 
             },
             's' => {
-                    self.terrain.moves[1] += 2.0;
+                let increment_count = if self.terrain.level_of_detail <= 5 { self.terrain.level_of_detail + 1} else { 2*(self.terrain.level_of_detail - 2)};
+                    self.terrain.moves[1] += increment_count as f32;
                     self.update_buffers = true;
 
                 },
             'n' =>{
-                    self.terrain.moves[1] -= 2.0;
+                let increment_count = if self.terrain.level_of_detail <= 5 { self.terrain.level_of_detail + 1} else { 2*(self.terrain.level_of_detail - 2)};
+                    self.terrain.moves[1] -= increment_count as f32;
                     self.update_buffers = true;
 
             },
@@ -551,21 +554,74 @@ impl State {
                 VirtualKeyCode::PageDown => {//Plane goes down
                     self.plane_move('d');
                     true
-                }VirtualKeyCode::Right => {//Plane goes down
-                    if self.camlook.x < 120.0 {
+                }VirtualKeyCode::Right => {//Plane looks right
+
+                        if self.camera.x > -160.0 {
+                            self.camera.x -=3.0
+                        }
+                        if self.camera.z > 0.0 {
+                            if self.camera.z < 3.0{
+                            self.camera.z -=1.0
+                            }else {
+                                self.camera.z -= 3.0
+                            }
+                        }
+                        if self.camera.z < 0.0 {
+                            if self.camera.z > -30.0{
+                            self.camera.z +=1.0
+                            }else {
+                                self.camera.z += 3.0
+                            }
+                        }
+                    if self.camlook.x < 200.0 {
                         self.camlook.x += 3.0;
                     }
                     self.plane_move('c');
                     true
                 }
-                VirtualKeyCode::Left => {//Plane goes down
-                    if self.camlook.x > -120.0 {
+                VirtualKeyCode::Left => {//Plane looks left
+
+                        if self.camera.x < 160.0 {
+                            self.camera.x +=3.0
+                        }
+                        if self.camera.z > 0.0 {
+                            if self.camera.z < 3.0{
+                            self.camera.z -=1.0
+                            }else {
+                                self.camera.z -= 3.0
+                            }
+                        }
+                        if self.camera.z < 0.0 {
+                            if self.camera.z > -3.0{
+                            self.camera.z +=1.0
+                            }else {
+                                self.camera.z += 3.0
+                            }
+                        }
+                    if self.camlook.x > -200.0 {
                         self.camlook.x -= 3.0;
                     }
                     self.plane_move('c');
                     true
                 }
-                VirtualKeyCode::Down => {//Plane goes down
+                VirtualKeyCode::Down => {//Plane looks back
+                    if self.camera.z > -200.0 {
+                            self.camera.z -=3.0
+                        }
+                        if self.camera.x > 0.0 {
+                            if self.camera.x < 3.0{
+                            self.camera.x -=1.0
+                            }else {
+                                self.camera.x -= 3.0
+                            }
+                        }
+                        if self.camera.x < 0.0 {
+                            if self.camera.x > -30.0{
+                            self.camera.x +=1.0
+                            }else {
+                                self.camera.x += 3.0
+                            }
+                        }
                     if self.camlook.z == 30.0{if self.camlook.x<0.0 {
                         if self.camlook.x < -10.0 { self.camlook.x += 3.0; }
                         self.camlook.x += 1.0;
@@ -594,7 +650,24 @@ impl State {
                     self.plane_move('c');
                     true
                 }
-                VirtualKeyCode::Up => {//Plane goes down
+                VirtualKeyCode::Up => {//Plane looks straight
+                    if self.camera.z < 200.0 {
+                            self.camera.z +=3.0
+                        }
+                        if self.camera.x > 0.0 {
+                            if self.camera.x < 3.0{
+                            self.camera.x -=1.0
+                            }else {
+                                self.camera.x -= 3.0
+                            }
+                        }
+                        if self.camera.x < 0.0 {
+                            if self.camera.x > -30.0{
+                            self.camera.x +=1.0
+                            }else {
+                                self.camera.x += 3.0
+                            }
+                        }
                     if self.camlook.z == 30.0{
                         if self.camlook.x<=0.0 {
                             if self.camlook.x > -120.0 {
