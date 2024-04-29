@@ -220,7 +220,7 @@ impl Default for Terrain {
             minesthread: mineastsouththread,
             minswthread: minsouthwestthread,
             minwnthread: minwestnorththread,
-            minimised: true,
+            minimised: false,
         }
     }
 }
@@ -319,7 +319,7 @@ impl Terrain {
             [1.0, 0.98, 0.98]
         ];
         let tdata = vec![[1f32, 1.0, 1.0]; 5];
-        let ta = vec![0.0f32, 0.3, 0.35, 0.6, 0.9, 1.0];
+        let ta = vec![0.0f32, 0.3, 0.35, 0.7, 0.9, 1.0];
         //receive the initial srtm tile from the thread at runtime only once
         if self.minimised == false{
         if self.doneinit == 0 {
@@ -495,65 +495,64 @@ impl Terrain {
                     }
                     //finding the correct map data to use based on the direction moving in
                     if self.south || self.north || self.east || self.west {
-                        if self.south {
-                            if self.east {
-                                if self.donese == 0 {
-                                    for received in &self.esthread.refer {
-                                        self.mapdatanextxz = vec![];
-                                        self.mapdatanextxz = received
-                                    }
-
-                                    self.donese += 1;
-                                }
-                                y = self.mapdatanextxz[(usex - 3600) as usize][(usez - 3600) as usize];
-                            } else if self.west {
-                                if self.donesw == 0 {
-                                    for received in &self.swthread.refer {
-                                        self.mapdatanextxz = vec![];
-                                        self.mapdatanextxz = received
-                                    }
-
-                                    self.donesw += 1;
-                                }
-                                y = self.mapdatanextxz[(usex + 3600) as usize][(usez - 3600) as usize];
-                            } else {
-                                y = self.mapdatanextz[usex as usize][(usez - 3600) as usize];
+                    if self.south {
+                        if self.east{if self.donese ==0 {
+                            for received in &self.esthread.refer {
+                                self.mapdatanextxz = vec![];
+                                self.mapdatanextxz = received
                             }
+
+                            self.donese +=1;
                         }
-                        if self.north {
-                            if self.east {
-                                if self.donene == 0 {
-                                    for received in &self.nethread.refer {
-                                        self.mapdatanextxz = vec![];
-                                        self.mapdatanextxz = received
-                                    }
-
-                                    self.donene += 1;
-                                }
-                                y = self.mapdatanextxz[(usex - 3600) as usize][(usez + 3600) as usize];
-                            } else if self.west {
-                                if self.donenw == 0 {
-                                    for received in &self.wnthread.refer {
-                                        self.mapdatanextxz = vec![];
-                                        self.mapdatanextxz = received
-                                    }
-
-                                    self.donenw += 1;
-                                }
-                                y = self.mapdatanextxz[(usex + 3600) as usize][(usez + 3600) as usize];
-                            } else {
-                                y = self.mapdatanextz[usex as usize][(usez + 3600) as usize];
+                            y = self.mapdatanextxz[(usex -3600) as usize][(usez - 3600) as usize];
+                        }else if self.west{
+                            if self.donesw ==0 {
+                            for received in &self.swthread.refer {
+                                self.mapdatanextxz = vec![];
+                                self.mapdatanextxz = received
                             }
+
+                            self.donesw +=1;
                         }
-                        if self.east && y == 0.0 {
-                            y = self.mapdatanextx[(usex - 3600) as usize][usez as usize];
+                            y = self.mapdatanextxz[(usex +3600) as usize][(usez - 3600) as usize];
+                        }else{
+                            y = self.mapdatanextz[usex as usize][(usez - 3600) as usize];
                         }
-                        if self.west && y == 0.0 {
-                            y = self.mapdatanextx[(usex + 3600) as usize][usez as usize];
+                    }else{
+                    if self.north {
+                        if self.east{
+                            if self.donene ==0 {
+                            for received in &self.nethread.refer {
+                                self.mapdatanextxz = vec![];
+                                self.mapdatanextxz = received
+                            }
+
+                            self.donene +=1;
                         }
-                    } else {
-                        y = self.mapdata[usex as usize][usez as usize];
-                    }
+                            y = self.mapdatanextxz[(usex - 3600) as usize][(usez + 3600) as usize];
+                        }else if self.west{
+                            if self.donenw ==0 {
+                            for received in &self.wnthread.refer {
+                                self.mapdatanextxz = vec![];
+                                self.mapdatanextxz = received
+                            }
+
+                            self.donenw +=1;
+                        }
+                            y = self.mapdatanextxz[(usex +3600) as usize][(usez + 3600) as usize];
+                        }else{
+                            y = self.mapdatanextz[usex as usize][(usez + 3600) as usize];
+                        }
+                    }else{
+                    if self.east{
+                        y = self.mapdatanextx[(usex - 3600) as usize][usez as usize];
+                    }else{
+                    if self.west{
+                        y = self.mapdatanextx[(usex + 3600) as usize][usez as usize];
+                    }}}}
+                        }else{
+                    y = self.mapdata[usex as usize][usez as usize];
+                }
                     self.north = false;
                     self.east = false;
                     self.south = false;
@@ -797,7 +796,6 @@ impl Terrain {
                 self.east = false;
                 self.south = false;
                 self.west = false;
-                //print!("{} ,,",y);
                if y < self.water_level {//making sure the y values to be water values are the same for a smooth water line
                     y = self.water_level - 0.01;
                 }
